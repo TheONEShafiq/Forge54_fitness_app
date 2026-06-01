@@ -1,0 +1,662 @@
+{
+  "program": {
+    "name": "Forge54 — 5-Day Program",
+    "version": "2.0",
+    "athlete": {
+      "age": 53,
+      "targetDuration": "30-40min",
+      "goals": ["functional strength", "fat burn", "conditioning", "flexibility", "mobility"]
+    },
+    "phases": [
+      { "id": "foundation", "weeks": [1, 2], "label": "Foundation", "focus": "Movement quality, moderate intensity, build patterns" },
+      { "id": "load", "weeks": [3, 4], "label": "Load", "focus": "Volume increases, heavier loads, conditioning spikes" },
+      { "id": "peak", "weeks": [5, 5], "label": "Peak", "focus": "Highest intensity — test limits" },
+      { "id": "deload", "weeks": [6, 6], "label": "Deload", "focus": "Intentional recovery, movement quality, benchmark retest" }
+    ],
+    "weekStructure": {
+      "monday": "strength",
+      "tuesday": "power",
+      "wednesday": "cardio",
+      "thursday": "athletic",
+      "friday": "strength",
+      "saturday": "rest",
+      "sunday": "rest"
+    }
+  },
+  "weeks": [
+    {
+      "week": 1,
+      "phase": "foundation",
+      "label": "Week 1 — Foundation",
+      "workouts": [
+        {
+          "id": "w1d1",
+          "day": "Monday",
+          "title": "Lower Body Strength + Carries",
+          "type": "strength",
+          "duration": 35,
+          "equipment": ["50lb KB", "35lb KB", "TRX", "Plyo Box", "25lb Vest", "Jump Rope"],
+          "sections": [
+            {
+              "name": "Warm-Up",
+              "duration": 5,
+              "exercises": [
+                { "name": "Jump Rope", "type": "time", "duration": 180, "sets": 1, "weight": 0, "cue": "Easy pace. Relaxed shoulders. Get blood moving." },
+                { "name": "Hip Circle + Leg Swing", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "10 hip circles each direction, then 10 leg swings forward/back each side." },
+                { "name": "Glute Bridge Hold", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "2-second pause at top each rep. Drive hips fully extended." }
+              ]
+            },
+            {
+              "name": "Main Block",
+              "duration": 22,
+              "exercises": [
+                { "name": "KB Goblet Squat", "type": "sets", "sets": 4, "reps": 8, "weight": 50, "rest": 60, "cue": "Slow 3-sec descent. Pause at bottom. Drive knees out. Chest tall." },
+                { "name": "Single-Leg KB Romanian Deadlift (Right)", "type": "sets", "sets": 3, "reps": 10, "weight": 35, "rest": 30, "cue": "Hinge from hip, slight knee bend. Control the lowering. Keep back flat." },
+                { "name": "Single-Leg KB Romanian Deadlift (Left)", "type": "sets", "sets": 3, "reps": 10, "weight": 35, "rest": 45, "cue": "Hinge from hip, slight knee bend. Control the lowering. Keep back flat." },
+                { "name": "KB Suitcase Carry (Right)", "type": "time", "duration": 40, "sets": 3, "weight": 50, "rest": 20, "cue": "Tall posture. Resist lateral lean. 40 yards each side." },
+                { "name": "KB Suitcase Carry (Left)", "type": "time", "duration": 40, "sets": 3, "weight": 50, "rest": 40, "cue": "Tall posture. Resist lateral lean. 40 yards each side." },
+                { "name": "TRX Split Squat (Right)", "type": "sets", "sets": 3, "reps": 10, "weight": 0, "rest": 30, "cue": "Rear foot in TRX. Knee tracks over toe. Full depth. Controlled." },
+                { "name": "TRX Split Squat (Left)", "type": "sets", "sets": 3, "reps": 10, "weight": 0, "rest": 45, "cue": "Rear foot in TRX. Knee tracks over toe. Full depth. Controlled." },
+                { "name": "Plyo Box Step-Up (Right)", "type": "sets", "sets": 3, "reps": 8, "weight": 25, "rest": 30, "cue": "Vest on. Drive through heel on box. Controlled step down." },
+                { "name": "Plyo Box Step-Up (Left)", "type": "sets", "sets": 3, "reps": 8, "weight": 25, "rest": 45, "cue": "Vest on. Drive through heel on box. Controlled step down." }
+              ]
+            },
+            {
+              "name": "Core Tabata",
+              "duration": 8,
+              "tabata": true,
+              "tabataNote": "4 exercises x 2 rounds = 8 min. 20 sec on / 10 sec off. Rest 60 sec between rounds.",
+              "exercises": [
+                { "name": "Hollow Body Hold", "type": "time", "duration": 20, "sets": 2, "weight": 0, "cue": "Lower back pressed to floor. Arms overhead. Hold the dish shape." },
+                { "name": "Mountain Climbers", "type": "time", "duration": 20, "sets": 2, "weight": 0, "cue": "Explosive drive. Hips level. Drive knees to chest alternating." },
+                { "name": "Dead Bug (Alternating)", "type": "time", "duration": 20, "sets": 2, "weight": 0, "cue": "Controlled tempo. Breathe out on extension. Back flat to floor." },
+                { "name": "Plank Shoulder Taps", "type": "time", "duration": 20, "sets": 2, "weight": 0, "cue": "Minimize hip rotation. Core locked. Tap alternating shoulders." }
+              ]
+            },
+            {
+              "name": "Cool-Down",
+              "duration": 5,
+              "exercises": [
+                { "name": "Hip Flexor Stretch (Right)", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "Lunge position. Tall spine. Posterior pelvic tilt. Breathe into it." },
+                { "name": "Hip Flexor Stretch (Left)", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "Lunge position. Tall spine. Posterior pelvic tilt. Breathe into it." },
+                { "name": "Figure-Four Stretch (Right)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Lying or seated. Pull shin toward chest. Feel glute." },
+                { "name": "Figure-Four Stretch (Left)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Lying or seated. Pull shin toward chest. Feel glute." },
+                { "name": "Child's Pose", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "Arms extended. Breathe into lower back. Full release." }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "w1d2",
+          "day": "Tuesday",
+          "title": "KB Power + Explosive Conditioning",
+          "type": "power",
+          "duration": 35,
+          "equipment": ["50lb KB", "35lb KB", "20lb KB", "Plyo Box", "50lb Sandbag", "Rower"],
+          "sections": [
+            {
+              "name": "Warm-Up",
+              "duration": 5,
+              "exercises": [
+                { "name": "Rowing Machine Easy", "type": "time", "duration": 180, "sets": 1, "weight": 0, "cue": "Rate 18-20. Legs-back-arms sequence. Easy effort." },
+                { "name": "KB Halo", "type": "sets", "sets": 1, "reps": 10, "weight": 20, "rest": 0, "cue": "Slow and controlled. 5 each direction. Core tight." },
+                { "name": "Inchworm to Push-Up", "type": "sets", "sets": 1, "reps": 6, "weight": 0, "rest": 0, "cue": "Walk hands out, one push-up, walk back. Open hips." }
+              ]
+            },
+            {
+              "name": "Power Block",
+              "duration": 20,
+              "exercises": [
+                { "name": "KB Two-Hand Swing", "type": "sets", "sets": 5, "reps": 15, "weight": 50, "rest": 60, "cue": "Hip hinge drive. Glutes fire at top. Bell eye-level. Explosive hip snap." },
+                { "name": "KB Clean + Press (Right)", "type": "sets", "sets": 4, "reps": 5, "weight": 35, "rest": 30, "cue": "Clean to rack, stable base, vertical press. Wrist straight at top." },
+                { "name": "KB Clean + Press (Left)", "type": "sets", "sets": 4, "reps": 5, "weight": 35, "rest": 45, "cue": "Clean to rack, stable base, vertical press. Wrist straight at top." },
+                { "name": "Plyo Box Jump", "type": "sets", "sets": 4, "reps": 6, "weight": 0, "rest": 60, "cue": "Soft landing. Absorb with hips. Step down — never jump down." },
+                { "name": "KB Snatch (Right)", "type": "sets", "sets": 3, "reps": 6, "weight": 35, "rest": 30, "cue": "Hip-driven. Punch through at top. Control descent between legs." },
+                { "name": "KB Snatch (Left)", "type": "sets", "sets": 3, "reps": 6, "weight": 35, "rest": 45, "cue": "Hip-driven. Punch through at top. Control descent between legs." },
+                { "name": "Sandbag Shouldering (Right)", "type": "sets", "sets": 4, "reps": 6, "weight": 50, "rest": 30, "cue": "Load from ground to shoulder. Drive with hips. Control down." },
+                { "name": "Sandbag Shouldering (Left)", "type": "sets", "sets": 4, "reps": 6, "weight": 50, "rest": 45, "cue": "Load from ground to shoulder. Drive with hips. Control down." }
+              ]
+            },
+            {
+              "name": "Core HIIT",
+              "duration": 7,
+              "tabata": true,
+              "tabataNote": "KB Windmill 30 sec each side x3. V-Up 20/10 x4 rounds. ~7 min total.",
+              "exercises": [
+                { "name": "KB Windmill (Right)", "type": "time", "duration": 30, "sets": 3, "weight": 20, "cue": "Press locked. Hinge laterally. Eyes on the bell the whole way." },
+                { "name": "KB Windmill (Left)", "type": "time", "duration": 30, "sets": 3, "weight": 20, "cue": "Press locked. Hinge laterally. Eyes on the bell the whole way." },
+                { "name": "V-Up", "type": "time", "duration": 20, "sets": 4, "weight": 0, "cue": "Full crunch. Touch toes at top. Controlled lowering. 10 sec rest between." }
+              ]
+            },
+            {
+              "name": "Cool-Down",
+              "duration": 5,
+              "exercises": [
+                { "name": "Forearm-to-Floor Lunge Stretch (Right)", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "Hip flexor and thoracic opener. Rotate upper body toward front leg." },
+                { "name": "Forearm-to-Floor Lunge Stretch (Left)", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "Hip flexor and thoracic opener. Rotate upper body toward front leg." },
+                { "name": "Thread-the-Needle (Right)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "From all-fours. Rotate arm under and through. Hold." },
+                { "name": "Thread-the-Needle (Left)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "From all-fours. Rotate arm under and through. Hold." },
+                { "name": "Doorframe Chest Stretch", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "Arms at 90 degrees. Lean through doorframe. Open chest." }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "w1d3",
+          "day": "Wednesday",
+          "title": "Cardio — Steady State or Intervals",
+          "type": "cardio",
+          "duration": 35,
+          "equipment": ["Rower", "Bike Trainer", "Jump Rope"],
+          "cardioOptions": [
+            {
+              "label": "Option A — Rowing Intervals",
+              "sections": [
+                {
+                  "name": "Rowing Intervals",
+                  "duration": 35,
+                  "exercises": [
+                    { "name": "Warm-Up Row", "type": "time", "duration": 300, "sets": 1, "weight": 0, "cue": "Rate 18. Focus on technique. Legs-back-arms." },
+                    { "name": "Row Interval x8 — 500m Hard", "type": "time", "duration": 120, "sets": 8, "weight": 0, "cue": "Hard effort. Rate 26-28. 90 sec rest between each 500m." },
+                    { "name": "Cool-Down Row", "type": "time", "duration": 300, "sets": 1, "weight": 0, "cue": "Rate 16. Long smooth strokes. Bring HR down." }
+                  ]
+                }
+              ]
+            },
+            {
+              "label": "Option B — Outdoor Run",
+              "sections": [
+                {
+                  "name": "Tempo Run",
+                  "duration": 35,
+                  "exercises": [
+                    { "name": "Easy Jog Warm-Up", "type": "time", "duration": 300, "sets": 1, "weight": 0, "cue": "Conversational pace. Shake out legs." },
+                    { "name": "Tempo Run x4 — 5 min Hard", "type": "time", "duration": 300, "sets": 4, "weight": 0, "cue": "Hard but sustainable. 7/10 effort. 90 sec walk between each." },
+                    { "name": "Easy Jog Cool-Down", "type": "time", "duration": 300, "sets": 1, "weight": 0, "cue": "Drop pace. Shake out legs. Big slow breaths." }
+                  ]
+                }
+              ]
+            },
+            {
+              "label": "Option C — Bike Trainer",
+              "sections": [
+                {
+                  "name": "Bike Intervals",
+                  "duration": 35,
+                  "exercises": [
+                    { "name": "Warm-Up Spin", "type": "time", "duration": 300, "sets": 1, "weight": 0, "cue": "Low resistance. Cadence 80-90 rpm." },
+                    { "name": "Bike Interval x5 — 4 min Hard", "type": "time", "duration": 240, "sets": 5, "weight": 0, "cue": "RPE 8. Hard effort. 2 min easy spin recovery between each." },
+                    { "name": "Easy Spin Cool-Down", "type": "time", "duration": 300, "sets": 1, "weight": 0, "cue": "Light resistance. Breathe down. Spin loose." }
+                  ]
+                }
+              ]
+            }
+          ],
+          "sections": [
+            {
+              "name": "Cardio Session",
+              "duration": 35,
+              "exercises": [
+                { "name": "Cardio Warm-Up", "type": "time", "duration": 300, "sets": 1, "weight": 0, "cue": "Easy effort on chosen modality. Rate 18 row / conversational run / 80rpm bike." },
+                { "name": "Main Cardio Intervals", "type": "time", "duration": 1500, "sets": 1, "weight": 0, "cue": "Row 8x500m / Run 4x5min tempo / Bike 5x4min hard. See options above." },
+                { "name": "Cardio Cool-Down", "type": "time", "duration": 300, "sets": 1, "weight": 0, "cue": "Easy effort. Bring heart rate below 120 bpm before stopping." }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "w1d4",
+          "day": "Thursday",
+          "title": "Upper Pull + Rotational Power",
+          "type": "athletic",
+          "duration": 35,
+          "equipment": ["Pull-Up Bar", "25lb Vest", "TRX", "35lb KB", "Bench", "50lb Sandbag", "Kickboxing Bag", "Resistance Bands"],
+          "sections": [
+            {
+              "name": "Warm-Up",
+              "duration": 5,
+              "exercises": [
+                { "name": "Band Pull-Apart", "type": "sets", "sets": 3, "reps": 15, "weight": 0, "rest": 0, "cue": "Slow tempo. Squeeze shoulder blades at end range." },
+                { "name": "TRX Y-T-W Drill", "type": "sets", "sets": 2, "reps": 10, "weight": 0, "rest": 0, "cue": "Body at 45 degrees. Controlled movement through Y, T and W positions." },
+                { "name": "Arm Circles + Cross-Body Stretch", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "10 forward, 10 back, then 30 sec each side cross-body stretch." }
+              ]
+            },
+            {
+              "name": "Main Block",
+              "duration": 22,
+              "exercises": [
+                { "name": "Weighted Pull-Up", "type": "sets", "sets": 5, "reps": 5, "weight": 25, "rest": 90, "cue": "Full hang to chin over bar. Dead hang between reps. Vest on." },
+                { "name": "TRX Inverted Row", "type": "sets", "sets": 4, "reps": 12, "weight": 0, "rest": 60, "cue": "Body straight as a board. Pull elbows back hard. Pause at top." },
+                { "name": "KB One-Arm Row (Right)", "type": "sets", "sets": 4, "reps": 10, "weight": 35, "rest": 30, "cue": "Brace on bench. Full range of motion. Don't rotate hips." },
+                { "name": "KB One-Arm Row (Left)", "type": "sets", "sets": 4, "reps": 10, "weight": 35, "rest": 45, "cue": "Brace on bench. Full range of motion. Don't rotate hips." },
+                { "name": "Sandbag Rotational Clean (Right)", "type": "sets", "sets": 3, "reps": 8, "weight": 50, "rest": 30, "cue": "Rotate from hips. Explosive hip drive. Not shoulders." },
+                { "name": "Sandbag Rotational Clean (Left)", "type": "sets", "sets": 3, "reps": 8, "weight": 50, "rest": 45, "cue": "Rotate from hips. Explosive hip drive. Not shoulders." },
+                { "name": "Kickboxing Bag — Cross-Hook Combo", "type": "time", "duration": 45, "sets": 4, "weight": 0, "rest": 30, "cue": "Rotate through hips on cross. Stay light on feet. Aggressive." }
+              ]
+            },
+            {
+              "name": "Core Tabata",
+              "duration": 8,
+              "tabata": true,
+              "tabataNote": "Russian Twist 20/10 x4 + Side Plank 30 sec each side x2 + Bicycle 20/10 x4 = 8 min.",
+              "exercises": [
+                { "name": "Russian Twist (Weighted)", "type": "time", "duration": 20, "sets": 4, "weight": 15, "cue": "Feet off floor. Rotate to touch floor each side. Control it." },
+                { "name": "Side Plank (Right)", "type": "time", "duration": 30, "sets": 2, "weight": 0, "cue": "Hip lifted. Body straight. Breathe." },
+                { "name": "Side Plank (Left)", "type": "time", "duration": 30, "sets": 2, "weight": 0, "cue": "Hip lifted. Body straight. Breathe." },
+                { "name": "Bicycle Crunch", "type": "time", "duration": 20, "sets": 4, "weight": 0, "cue": "Slow and controlled. Quality over speed. Full rotation." }
+              ]
+            },
+            {
+              "name": "Cool-Down",
+              "duration": 5,
+              "exercises": [
+                { "name": "Doorframe Pec Stretch (Right)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Elbow at 90 degrees. Feel stretch across chest. Breathe." },
+                { "name": "Doorframe Pec Stretch (Left)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Elbow at 90 degrees. Feel stretch across chest. Breathe." },
+                { "name": "Lat Stretch on Pull-Up Bar", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "Hang with slight lean away. Breathe into the lat." },
+                { "name": "Thoracic Extension on Bench Edge", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "Upper back on bench edge. Arms fall overhead. Open chest. Breathe." }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "w1d5",
+          "day": "Saturday",
+          "title": "Full-Body Circuit — Statham Benchmark",
+          "type": "athletic",
+          "duration": 40,
+          "benchmarkWorkout": true,
+          "sections": [
+            {
+              "name": "Warm-Up",
+              "duration": 5,
+              "exercises": [
+                { "name": "Rowing Machine Easy", "type": "time", "duration": 180, "sets": 1, "weight": 0, "cue": "Build effort gradually." },
+                { "name": "World's Greatest Stretch", "type": "sets", "sets": 1, "reps": 5, "weight": 0, "rest": 0, "cue": "Each side. Lunge + thoracic rotation + hip opener all in one." },
+                { "name": "Plyo Box Lateral Step-Over", "type": "sets", "sets": 1, "reps": 10, "weight": 0, "rest": 0, "cue": "Quick feet. Stay light and athletic. Each side." }
+              ]
+            },
+            {
+              "name": "AMRAP Circuit x4 Rounds",
+              "duration": 24,
+              "circuitRounds": 4,
+              "restBetweenRounds": 90,
+              "amrap": false,
+              "exercises": [
+                { "name": "KB Swing", "type": "sets", "sets": 4, "reps": 15, "weight": 50, "rest": 0, "cue": "Power from hips. Bell shoulder height at top. Explosive." },
+                { "name": "Pull-Up", "type": "sets", "sets": 4, "reps": 0, "weight": 0, "rest": 0, "cue": "Max reps. Dead hang start. Control the negative." },
+                { "name": "Sandbag Bear Hug Squat", "type": "sets", "sets": 4, "reps": 10, "weight": 50, "rest": 0, "cue": "Hug sandbag to chest. Squat deep. Chest tall." },
+                { "name": "Kickboxing Bag — Jab-Cross-Kick", "type": "time", "duration": 45, "sets": 4, "weight": 0, "rest": 0, "cue": "Stay aggressive. Rotate hips on kick. Light on feet." },
+                { "name": "Plyo Box Jump + Step Down", "type": "sets", "sets": 4, "reps": 8, "weight": 0, "rest": 0, "cue": "Jump explosively. Always step down to protect knees. Reset each rep." }
+              ]
+            },
+            {
+              "name": "Core Finisher",
+              "duration": 6,
+              "tabata": true,
+              "tabataNote": "2 rounds: 15 hollow body rollouts + 3 Turkish get-ups each side. Full core integration.",
+              "exercises": [
+                { "name": "Hollow Body Rollout (or Hold)", "type": "sets", "sets": 2, "reps": 15, "weight": 0, "rest": 30, "cue": "Slow out and back. If no wheel, hold hollow body 30 sec." },
+                { "name": "Turkish Get-Up (Right)", "type": "sets", "sets": 2, "reps": 3, "weight": 35, "rest": 0, "cue": "Slow and deliberate. KB locked overhead throughout. No rushing." },
+                { "name": "Turkish Get-Up (Left)", "type": "sets", "sets": 2, "reps": 3, "weight": 35, "rest": 30, "cue": "Slow and deliberate. KB locked overhead throughout. No rushing." }
+              ]
+            },
+            {
+              "name": "Cool-Down",
+              "duration": 5,
+              "exercises": [
+                { "name": "Pigeon Pose (Right)", "type": "time", "duration": 75, "sets": 1, "weight": 0, "cue": "Deep hip opener. Breathe into the tension. Don't force it." },
+                { "name": "Pigeon Pose (Left)", "type": "time", "duration": 75, "sets": 1, "weight": 0, "cue": "Deep hip opener. Breathe into the tension. Don't force it." },
+                { "name": "Supine Spinal Twist (Right)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Shoulders flat. Let gravity do the work." },
+                { "name": "Supine Spinal Twist (Left)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Shoulders flat. Let gravity do the work." },
+                { "name": "Standing Forward Fold", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "Bend knees slightly. Let head hang heavy. Full release." }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "week": 2,
+      "phase": "foundation",
+      "label": "Week 2 — Foundation (Load +5%)",
+      "workouts": [
+        {
+          "id": "w2d1",
+          "day": "Monday",
+          "title": "Posterior Chain + Loaded Carries",
+          "type": "strength",
+          "duration": 35,
+          "equipment": ["50lb KB", "35lb KB", "20lb KB", "TRX", "BOSU Ball", "50lb Sandbag", "Resistance Bands"],
+          "sections": [
+            {
+              "name": "Warm-Up",
+              "duration": 5,
+              "exercises": [
+                { "name": "Jump Rope — Fast/Slow Intervals", "type": "time", "duration": 180, "sets": 1, "weight": 0, "cue": "30 sec fast / 30 sec easy x3. Prime fast-twitch from the start." },
+                { "name": "Banded Good Morning", "type": "sets", "sets": 2, "reps": 15, "weight": 0, "rest": 0, "cue": "Band anchored underfoot. Hinge from hip. Feel hamstrings load." }
+              ]
+            },
+            {
+              "name": "Main Block",
+              "duration": 22,
+              "exercises": [
+                { "name": "KB Deadlift (Double KB)", "type": "sets", "sets": 5, "reps": 5, "weight": 50, "rest": 90, "cue": "Hinge not squat. Drive the floor away. Lock hips and glutes at top." },
+                { "name": "KB Romanian Deadlift", "type": "sets", "sets": 4, "reps": 10, "weight": 50, "rest": 60, "cue": "Slow 4-sec descent. Feel hamstring load at bottom. Drive hips forward to stand." },
+                { "name": "KB Rack Carry (Right)", "type": "time", "duration": 40, "sets": 3, "weight": 35, "rest": 20, "cue": "KB in rack position. Don't let elbow flare out. Tall posture." },
+                { "name": "KB Rack Carry (Left)", "type": "time", "duration": 40, "sets": 3, "weight": 35, "rest": 40, "cue": "KB in rack position. Don't let elbow flare out. Tall posture." },
+                { "name": "BOSU Single-Leg RDL (Right)", "type": "sets", "sets": 3, "reps": 8, "weight": 20, "rest": 30, "cue": "BOSU dome down for instability. Slow and controlled. Balance challenge." },
+                { "name": "BOSU Single-Leg RDL (Left)", "type": "sets", "sets": 3, "reps": 8, "weight": 20, "rest": 45, "cue": "BOSU dome down for instability. Slow and controlled. Balance challenge." },
+                { "name": "Sandbag Shouldering + Walk (Right)", "type": "time", "duration": 30, "sets": 4, "weight": 50, "rest": 20, "cue": "Shoulder the bag. Walk 10 yards. Lower. Switch sides." },
+                { "name": "Sandbag Shouldering + Walk (Left)", "type": "time", "duration": 30, "sets": 4, "weight": 50, "rest": 40, "cue": "Shoulder the bag. Walk 10 yards. Lower. Switch sides." }
+              ]
+            },
+            {
+              "name": "Core Tabata",
+              "duration": 8,
+              "tabata": true,
+              "tabataNote": "4 exercises x 2 rounds = 8 min. 20/10 protocol.",
+              "exercises": [
+                { "name": "Hollow Body Rock", "type": "time", "duration": 20, "sets": 2, "weight": 0, "cue": "Arms overhead. Maintain dish shape. Rock forward and back." },
+                { "name": "KB Around-the-Body Pass", "type": "time", "duration": 20, "sets": 2, "weight": 20, "cue": "Feet off floor. Pass KB in circle around body. Alternate direction each set." },
+                { "name": "Side Plank Hip Dip (Right)", "type": "time", "duration": 20, "sets": 2, "weight": 0, "cue": "Hip up and down. Controlled. No momentum." },
+                { "name": "Side Plank Hip Dip (Left)", "type": "time", "duration": 20, "sets": 2, "weight": 0, "cue": "Hip up and down. Controlled. No momentum." },
+                { "name": "Dead Bug with KB Hold", "type": "time", "duration": 20, "sets": 2, "weight": 15, "cue": "Hold light KB at ceiling. Extend opposite arm and leg slowly." }
+              ]
+            },
+            {
+              "name": "Cool-Down",
+              "duration": 5,
+              "exercises": [
+                { "name": "Seated Hamstring Stretch (Right)", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "One leg extended. Hinge forward at hip. Not the back." },
+                { "name": "Seated Hamstring Stretch (Left)", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "One leg extended. Hinge forward at hip. Not the back." },
+                { "name": "Kneeling Hip Flexor Stretch (Right)", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "Back knee down. Shift forward. Tuck pelvis under." },
+                { "name": "Kneeling Hip Flexor Stretch (Left)", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "Back knee down. Shift forward. Tuck pelvis under." }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "w2d2",
+          "day": "Tuesday",
+          "title": "Ruck EMOM + Explosive Upper",
+          "type": "power",
+          "duration": 35,
+          "equipment": ["25lb Vest", "50lb Sandbag", "35lb KB", "Plyo Box", "Resistance Bands"],
+          "sections": [
+            {
+              "name": "Warm-Up",
+              "duration": 5,
+              "exercises": [
+                { "name": "Ruck Walk — Brisk", "type": "time", "duration": 180, "sets": 1, "weight": 25, "cue": "25lb vest. Tall posture. Long stride. Set the pace." },
+                { "name": "Band Face Pull", "type": "sets", "sets": 2, "reps": 20, "weight": 0, "rest": 0, "cue": "Pull to forehead level. Rotate wrists at end position." }
+              ]
+            },
+            {
+              "name": "EMOM x16 min",
+              "duration": 16,
+              "emom": true,
+              "emomNote": "4-exercise EMOM rotating every minute. 4 rounds = 16 min. Rest is what remains in each minute.",
+              "exercises": [
+                { "name": "EMOM Min 1 — Sandbag Clean", "type": "sets", "sets": 4, "reps": 8, "weight": 50, "rest": 0, "cue": "Explosive hip extension. Pull bag to rack position. 8 reps in under 45 sec." },
+                { "name": "EMOM Min 2 — Plyo Push-Up", "type": "sets", "sets": 4, "reps": 10, "weight": 0, "rest": 0, "cue": "Hands leave floor at top. Land soft. 10 reps in under 45 sec." },
+                { "name": "EMOM Min 3 — KB One-Arm Swing (Right + Left)", "type": "sets", "sets": 4, "reps": 16, "weight": 35, "rest": 0, "cue": "8 right then 8 left within the minute. Hard hip drive each rep." },
+                { "name": "EMOM Min 4 — Plyo Box Lateral Jump", "type": "sets", "sets": 4, "reps": 10, "weight": 0, "rest": 0, "cue": "Side to side over box. Stay bouncy. 10 total in under 45 sec." }
+              ]
+            },
+            {
+              "name": "Core HIIT",
+              "duration": 7,
+              "tabata": true,
+              "tabataNote": "3 exercises x 3 rounds each = ~7 min. 20 on / 10 off.",
+              "exercises": [
+                { "name": "Sandbag Drag (Plank)", "type": "time", "duration": 20, "sets": 3, "weight": 50, "cue": "In plank position. Drag bag side to side underneath you." },
+                { "name": "V-Up Crunch", "type": "time", "duration": 20, "sets": 3, "weight": 0, "cue": "Arms overhead. Simultaneous leg and torso rise. Touch toes at top." },
+                { "name": "Plank Walkout", "type": "time", "duration": 20, "sets": 3, "weight": 0, "cue": "From standing, walk hands to full plank and back. Controlled." }
+              ]
+            },
+            {
+              "name": "Cool-Down",
+              "duration": 5,
+              "exercises": [
+                { "name": "Neck Side Stretch (Right)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Ear to shoulder. Hand on top adds gentle pressure." },
+                { "name": "Neck Side Stretch (Left)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Ear to shoulder. Hand on top adds gentle pressure." },
+                { "name": "Chest Opener on Bench", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "Lying face-up on bench. Arms fall overhead. Breathe." },
+                { "name": "Supine Knee-to-Chest (Right)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Pull knee to chest. Breathe into lower back." },
+                { "name": "Supine Knee-to-Chest (Left)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Pull knee to chest. Breathe into lower back." }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "w2d3",
+          "day": "Wednesday",
+          "title": "Cardio — Longer Steady State",
+          "type": "cardio",
+          "duration": 35,
+          "equipment": ["Rower", "Bike Trainer", "Jump Rope"],
+          "sections": [
+            {
+              "name": "Cardio Session",
+              "duration": 35,
+              "exercises": [
+                { "name": "Cardio Warm-Up", "type": "time", "duration": 300, "sets": 1, "weight": 0, "cue": "Easy effort. Row rate 18 / conversational run / easy spin." },
+                { "name": "Steady-State Cardio", "type": "time", "duration": 1500, "sets": 1, "weight": 0, "cue": "Row 25 min at rate 22-24 targeting 2:05-2:15/500m. Or run negative split (first 10 easy, last 10 building). Or bike Zone 3 steady." },
+                { "name": "Cardio Cool-Down", "type": "time", "duration": 300, "sets": 1, "weight": 0, "cue": "Drop effort. Bring HR below 120. Long slow breaths." }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "w2d4",
+          "day": "Thursday",
+          "title": "Unilateral Upper + Bag Work",
+          "type": "athletic",
+          "duration": 35,
+          "equipment": ["Pull-Up Bar", "25lb Vest", "35lb KB", "TRX", "Kickboxing Bag", "Resistance Bands"],
+          "sections": [
+            {
+              "name": "Warm-Up",
+              "duration": 5,
+              "exercises": [
+                { "name": "TRX Row + Y-Raise Combo", "type": "sets", "sets": 2, "reps": 12, "weight": 0, "rest": 0, "cue": "Row, then release and raise to Y position. Smooth transition." },
+                { "name": "Band Pull-Apart + Overhead", "type": "sets", "sets": 2, "reps": 15, "weight": 0, "rest": 0, "cue": "Pull apart at chest then raise overhead. Full range." }
+              ]
+            },
+            {
+              "name": "Main Block",
+              "duration": 22,
+              "exercises": [
+                { "name": "Weighted Pull-Up", "type": "sets", "sets": 4, "reps": 6, "weight": 25, "rest": 90, "cue": "Controlled negative — 3 sec down. Full hang each rep. Vest on." },
+                { "name": "KB One-Arm Push Press (Right)", "type": "sets", "sets": 4, "reps": 6, "weight": 35, "rest": 30, "cue": "Rack position. Slight knee drive. Vertical press. Wrist straight." },
+                { "name": "KB One-Arm Push Press (Left)", "type": "sets", "sets": 4, "reps": 6, "weight": 35, "rest": 45, "cue": "Rack position. Slight knee drive. Vertical press. Wrist straight." },
+                { "name": "TRX Atomic Push-Up", "type": "sets", "sets": 3, "reps": 10, "weight": 0, "rest": 60, "cue": "Feet in TRX. Push-up then drive knees to chest. Hard combo." },
+                { "name": "Kickboxing Bag — 3 min Round", "type": "time", "duration": 180, "sets": 3, "weight": 0, "rest": 60, "cue": "Jab-cross-hook-uppercut combos. Work angles. Stay on toes." }
+              ]
+            },
+            {
+              "name": "Core Tabata",
+              "duration": 8,
+              "tabata": true,
+              "tabataNote": "4 exercises x 2 rounds. 20 on / 10 off. 8 min total.",
+              "exercises": [
+                { "name": "Hanging Knee Raise", "type": "time", "duration": 20, "sets": 2, "weight": 0, "cue": "From pull-up bar. Knees to chest. Lower controlled. Max reps in 20 sec." },
+                { "name": "Windshield Wipers", "type": "time", "duration": 20, "sets": 2, "weight": 0, "cue": "Lying. Legs up. Rotate side to side slowly. Control the movement." },
+                { "name": "L-Sit Hold", "type": "time", "duration": 20, "sets": 2, "weight": 0, "cue": "Parallel bars or chairs. Legs parallel to floor. Arms locked. Brutal." },
+                { "name": "Plank Up-Down", "type": "time", "duration": 20, "sets": 2, "weight": 0, "cue": "Plank to push-up alternating. Keep hips perfectly level." }
+              ]
+            },
+            {
+              "name": "Cool-Down",
+              "duration": 5,
+              "exercises": [
+                { "name": "Wrist Extension Stretch (Right)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Arm extended palm out. Press fingers back gently. Hold." },
+                { "name": "Wrist Extension Stretch (Left)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Arm extended palm out. Press fingers back gently. Hold." },
+                { "name": "Upper Trap Stretch (Right)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Tilt head away. Hand on top adds gentle weight." },
+                { "name": "Upper Trap Stretch (Left)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Tilt head away. Hand on top adds gentle weight." },
+                { "name": "Child's Pose with Lateral Reach (Right)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Reach arms to right. Breathe into lat and oblique." },
+                { "name": "Child's Pose with Lateral Reach (Left)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Reach arms to left. Breathe into lat and oblique." }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "w2d5",
+          "day": "Saturday",
+          "title": "Fight-Style AMRAP Benchmark",
+          "type": "athletic",
+          "duration": 40,
+          "benchmarkWorkout": true,
+          "benchmarkNote": "Record total rounds. Retest this exact workout in Week 6 to measure your progress.",
+          "sections": [
+            {
+              "name": "Warm-Up",
+              "duration": 5,
+              "exercises": [
+                { "name": "Jump Rope Freestyle", "type": "time", "duration": 180, "sets": 1, "weight": 0, "cue": "Mix speeds. Alternate footwork patterns. Get loose." },
+                { "name": "Hip 90/90 Stretch (Right)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Both legs at 90 degrees. Lean over front shin." },
+                { "name": "Hip 90/90 Stretch (Left)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Both legs at 90 degrees. Lean over front shin." }
+              ]
+            },
+            {
+              "name": "20-min AMRAP",
+              "duration": 20,
+              "amrap": true,
+              "amrapNote": "As many rounds as possible in 20 minutes. Record your total. This is your benchmark.",
+              "exercises": [
+                { "name": "Pull-Up", "type": "sets", "sets": 1, "reps": 5, "weight": 0, "rest": 0, "cue": "Strict. If fading use 3. Quality over quantity. Dead hang." },
+                { "name": "KB Swing", "type": "sets", "sets": 1, "reps": 10, "weight": 50, "rest": 0, "cue": "50lb. Hard and explosive every single rep." },
+                { "name": "Push-Up", "type": "sets", "sets": 1, "reps": 15, "weight": 0, "rest": 0, "cue": "Chest to floor. Full lockout at top. No worming." },
+                { "name": "200m Run or 1 min Row", "type": "time", "duration": 60, "sets": 1, "weight": 0, "rest": 0, "cue": "Hard effort. Push this leg every round. Don't coast it." }
+              ]
+            },
+            {
+              "name": "Core Finisher",
+              "duration": 5,
+              "tabata": true,
+              "tabataNote": "2 rounds: sandbag sit-up press + max plank hold. Rest 30 sec between rounds.",
+              "exercises": [
+                { "name": "Sandbag Sit-Up + Press", "type": "sets", "sets": 2, "reps": 15, "weight": 50, "rest": 30, "cue": "Hold bag at chest. Sit up. Press overhead at top. Control down." },
+                { "name": "Plank Hold — Max Time", "type": "time", "duration": 60, "sets": 2, "weight": 0, "cue": "Breathe slowly. Squeeze glutes and quads. Hold until failure." }
+              ]
+            },
+            {
+              "name": "Cool-Down",
+              "duration": 6,
+              "exercises": [
+                { "name": "Pigeon Pose (Right)", "type": "time", "duration": 90, "sets": 1, "weight": 0, "cue": "Intense workout today earns this. Breathe deep into the hip." },
+                { "name": "Pigeon Pose (Left)", "type": "time", "duration": 90, "sets": 1, "weight": 0, "cue": "Intense workout today earns this. Breathe deep into the hip." },
+                { "name": "Lying Quad Stretch (Right)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Side lying. Pull heel to glute. Don't arch lower back." },
+                { "name": "Lying Quad Stretch (Left)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Side lying. Pull heel to glute. Don't arch lower back." },
+                { "name": "Happy Baby Pose", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "Grab outsides of feet. Rock gently side to side. Full release." }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "week": 3,
+      "phase": "load",
+      "label": "Week 3 — Load (Volume Up)",
+      "progressionNote": "Add 5-10% load to all KB and sandbag movements vs Week 1. Pull-up reps +1 per set.",
+      "workouts": [
+        { "id": "w3d1", "day": "Monday", "title": "Lower Body Strength + Carries", "type": "strength", "duration": 37, "inheritFrom": "w1d1", "progressionOverrides": { "KB Goblet Squat": { "sets": 5, "reps": 8 }, "Single-Leg KB Romanian Deadlift (Right)": { "sets": 4, "reps": 10 }, "Single-Leg KB Romanian Deadlift (Left)": { "sets": 4, "reps": 10 }, "Weighted Pull-Up": { "reps": 6 } }, "equipment": ["50lb KB", "35lb KB", "TRX", "Plyo Box", "25lb Vest", "Jump Rope"] },
+        { "id": "w3d2", "day": "Tuesday", "title": "KB Power + Explosive Conditioning", "type": "power", "duration": 37, "inheritFrom": "w1d2", "progressionOverrides": { "KB Two-Hand Swing": { "sets": 5, "reps": 18 }, "Plyo Box Jump": { "sets": 5, "reps": 6 } }, "equipment": ["50lb KB", "35lb KB", "20lb KB", "Plyo Box", "50lb Sandbag", "Rower"] },
+        { "id": "w3d3", "day": "Wednesday", "title": "Cardio — Build Intervals", "type": "cardio", "duration": 37, "inheritFrom": "w1d3", "progressionNote": "Rowing: add 2 more 500m intervals (10 total). Running: add 1 tempo interval. Bike: extend intervals to 5 min.", "equipment": ["Rower", "Bike Trainer", "Jump Rope"] },
+        { "id": "w3d4", "day": "Thursday", "title": "Upper Pull + Rotational Power", "type": "athletic", "duration": 37, "inheritFrom": "w1d4", "progressionOverrides": { "Weighted Pull-Up": { "sets": 5, "reps": 6 }, "Kickboxing Bag — Cross-Hook Combo": { "sets": 5 } }, "equipment": ["Pull-Up Bar", "25lb Vest", "TRX", "35lb KB", "Bench", "50lb Sandbag", "Kickboxing Bag", "Resistance Bands"] },
+        { "id": "w3d5", "day": "Saturday", "title": "Full-Body Circuit — Volume", "type": "athletic", "duration": 40, "inheritFrom": "w1d5", "progressionOverrides": { "KB Swing": { "sets": 5 }, "Sandbag Bear Hug Squat": { "sets": 5 }, "Plyo Box Jump + Step Down": { "sets": 5 } }, "equipment": ["50lb KB", "Pull-Up Bar", "50lb Sandbag", "Kickboxing Bag", "Plyo Box", "35lb KB", "Rower"] }
+      ]
+    },
+    {
+      "week": 4,
+      "phase": "load",
+      "label": "Week 4 — Load (Heavier + Longer)",
+      "progressionNote": "Add another 5-10% load. Push sets to near failure on final set. Cardio interval count up again.",
+      "workouts": [
+        { "id": "w4d1", "day": "Monday", "title": "Lower Body Strength + Carries", "type": "strength", "duration": 38, "inheritFrom": "w2d1", "progressionOverrides": { "KB Deadlift (Double KB)": { "sets": 6, "reps": 5 }, "KB Romanian Deadlift": { "sets": 5, "reps": 10 } }, "equipment": ["50lb KB", "35lb KB", "20lb KB", "TRX", "BOSU Ball", "50lb Sandbag", "Resistance Bands"] },
+        { "id": "w4d2", "day": "Tuesday", "title": "Ruck EMOM + Explosive Upper", "type": "power", "duration": 38, "inheritFrom": "w2d2", "progressionOverrides": { "EMOM Min 1 — Sandbag Clean": { "reps": 10 }, "EMOM Min 2 — Plyo Push-Up": { "reps": 12 } }, "equipment": ["25lb Vest", "50lb Sandbag", "35lb KB", "Plyo Box", "Resistance Bands"] },
+        { "id": "w4d3", "day": "Wednesday", "title": "Cardio — Peak Distance", "type": "cardio", "duration": 38, "inheritFrom": "w2d3", "progressionNote": "Longest cardio session. Row 30 min steady / Run 6x5min / Bike 6x4min.", "equipment": ["Rower", "Bike Trainer", "Jump Rope"] },
+        { "id": "w4d4", "day": "Thursday", "title": "Unilateral Upper + Bag Work", "type": "athletic", "duration": 38, "inheritFrom": "w2d4", "progressionOverrides": { "Weighted Pull-Up": { "reps": 7 }, "Kickboxing Bag — 3 min Round": { "sets": 4 } }, "equipment": ["Pull-Up Bar", "25lb Vest", "35lb KB", "TRX", "Kickboxing Bag", "Resistance Bands"] },
+        { "id": "w4d5", "day": "Saturday", "title": "Fight-Style AMRAP — Push For PR", "type": "athletic", "duration": 40, "inheritFrom": "w2d5", "progressionNote": "Same AMRAP as Week 2 Saturday. Aim for more rounds than your benchmark.", "benchmarkWorkout": true, "equipment": ["Pull-Up Bar", "50lb KB", "50lb Sandbag", "Kickboxing Bag", "Jump Rope"] }
+      ]
+    },
+    {
+      "week": 5,
+      "phase": "peak",
+      "label": "Week 5 — Peak (Maximum Effort)",
+      "progressionNote": "Heaviest week. Max safe load on all compound movements. Shorter rest. Higher intensity.",
+      "workouts": [
+        { "id": "w5d1", "day": "Monday", "title": "Lower Body Peak Load", "type": "strength", "duration": 40, "inheritFrom": "w1d1", "progressionOverrides": { "KB Goblet Squat": { "sets": 5, "reps": 10, "weight": 50 }, "Single-Leg KB Romanian Deadlift (Right)": { "sets": 4, "reps": 12, "weight": 35 }, "Single-Leg KB Romanian Deadlift (Left)": { "sets": 4, "reps": 12, "weight": 35 }, "KB Suitcase Carry (Right)": { "weight": 50 }, "KB Suitcase Carry (Left)": { "weight": 50 } }, "equipment": ["50lb KB", "35lb KB", "TRX", "Plyo Box", "25lb Vest", "Jump Rope"] },
+        { "id": "w5d2", "day": "Tuesday", "title": "Max Power Output", "type": "power", "duration": 40, "inheritFrom": "w1d2", "progressionOverrides": { "KB Two-Hand Swing": { "sets": 6, "reps": 20, "weight": 50 }, "Plyo Box Jump": { "sets": 5, "reps": 8 }, "Sandbag Shouldering (Right)": { "sets": 5, "weight": 50 }, "Sandbag Shouldering (Left)": { "sets": 5, "weight": 50 } }, "equipment": ["50lb KB", "35lb KB", "20lb KB", "Plyo Box", "50lb Sandbag", "Rower"] },
+        { "id": "w5d3", "day": "Wednesday", "title": "Cardio — Peak Effort", "type": "cardio", "duration": 38, "inheritFrom": "w1d3", "progressionNote": "Best effort cardio. Row: 10x500m. Run: 5x5min at 8/10 effort. Bike: 6x4min at max sustainable.", "equipment": ["Rower", "Bike Trainer", "Jump Rope"] },
+        { "id": "w5d4", "day": "Thursday", "title": "Upper Peak — Pull Strength", "type": "athletic", "duration": 40, "inheritFrom": "w1d4", "progressionOverrides": { "Weighted Pull-Up": { "sets": 5, "reps": 7, "weight": 25 }, "TRX Inverted Row": { "sets": 5, "reps": 15 }, "Kickboxing Bag — Cross-Hook Combo": { "sets": 5, "duration": 60 } }, "equipment": ["Pull-Up Bar", "25lb Vest", "TRX", "35lb KB", "Bench", "50lb Sandbag", "Kickboxing Bag", "Resistance Bands"] },
+        { "id": "w5d5", "day": "Saturday", "title": "Peak Circuit — Max Rounds",  "type": "athletic", "duration": 40, "inheritFrom": "w2d5", "progressionNote": "Same AMRAP structure. This is your PR attempt before deload. Leave everything in the gym.", "benchmarkWorkout": true, "equipment": ["Pull-Up Bar", "50lb KB", "50lb Sandbag", "Kickboxing Bag", "Jump Rope"] }
+      ]
+    },
+    {
+      "week": 6,
+      "phase": "deload",
+      "label": "Week 6 — Deload + Benchmark Retest",
+      "progressionNote": "Drop load to 60-70% of Week 5. Focus on movement quality. Retest AMRAP benchmark on Saturday.",
+      "workouts": [
+        { "id": "w6d1", "day": "Monday", "title": "Lower Body — Deload Quality", "type": "strength", "duration": 32, "inheritFrom": "w1d1", "progressionOverrides": { "KB Goblet Squat": { "sets": 3, "reps": 8, "weight": 35 }, "Single-Leg KB Romanian Deadlift (Right)": { "sets": 3, "reps": 8, "weight": 20 }, "Single-Leg KB Romanian Deadlift (Left)": { "sets": 3, "reps": 8, "weight": 20 }, "KB Suitcase Carry (Right)": { "weight": 35 }, "KB Suitcase Carry (Left)": { "weight": 35 } }, "equipment": ["35lb KB", "20lb KB", "TRX", "Plyo Box", "Jump Rope"] },
+        { "id": "w6d2", "day": "Tuesday", "title": "Power — Deload Technique", "type": "power", "duration": 32, "inheritFrom": "w1d2", "progressionOverrides": { "KB Two-Hand Swing": { "sets": 3, "reps": 12, "weight": 35 }, "KB Clean + Press (Right)": { "sets": 3, "reps": 5, "weight": 20 }, "KB Clean + Press (Left)": { "sets": 3, "reps": 5, "weight": 20 }, "Plyo Box Jump": { "sets": 3, "reps": 5 } }, "equipment": ["35lb KB", "20lb KB", "Plyo Box", "35lb Sandbag", "Rower"] },
+        { "id": "w6d3", "day": "Wednesday", "title": "Cardio — Easy Active Recovery", "type": "cardio", "duration": 30, "inheritFrom": "w1d3", "progressionNote": "Easy Zone 2 only. Row or bike 30 min at conversational pace. No intervals. Recovery focus.", "equipment": ["Rower", "Bike Trainer"] },
+        { "id": "w6d4", "day": "Thursday", "title": "Upper — Deload Mobility Focus", "type": "athletic", "duration": 32, "inheritFrom": "w2d4", "progressionOverrides": { "Weighted Pull-Up": { "sets": 3, "reps": 5, "weight": 0 }, "KB One-Arm Push Press (Right)": { "sets": 3, "reps": 5, "weight": 20 }, "KB One-Arm Push Press (Left)": { "sets": 3, "reps": 5, "weight": 20 }, "Kickboxing Bag — 3 min Round": { "sets": 2 } }, "equipment": ["Pull-Up Bar", "TRX", "20lb KB", "Kickboxing Bag", "Resistance Bands"] },
+        {
+          "id": "w6d5",
+          "day": "Saturday",
+          "title": "AMRAP Benchmark Retest",
+          "type": "athletic",
+          "duration": 40,
+          "benchmarkWorkout": true,
+          "benchmarkNote": "Same exact workout as Week 2 Saturday. Compare your rounds. This is your 6-week result.",
+          "sections": [
+            {
+              "name": "Warm-Up",
+              "duration": 5,
+              "exercises": [
+                { "name": "Jump Rope Freestyle", "type": "time", "duration": 180, "sets": 1, "weight": 0, "cue": "Mix speeds. Get loose. This is your test day." },
+                { "name": "Hip 90/90 Stretch (Right)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Hips open and ready." },
+                { "name": "Hip 90/90 Stretch (Left)", "type": "time", "duration": 45, "sets": 1, "weight": 0, "cue": "Hips open and ready." }
+              ]
+            },
+            {
+              "name": "20-min AMRAP — Benchmark Retest",
+              "duration": 20,
+              "amrap": true,
+              "amrapNote": "RETEST: Same as Week 2 Saturday. Record rounds and compare to your benchmark. This is your 6-week result.",
+              "exercises": [
+                { "name": "Pull-Up", "type": "sets", "sets": 1, "reps": 5, "weight": 0, "rest": 0, "cue": "Strict. Same standard as Week 2. Dead hang every rep." },
+                { "name": "KB Swing", "type": "sets", "sets": 1, "reps": 10, "weight": 50, "rest": 0, "cue": "50lb. Same weight as Week 2. Explosive every rep." },
+                { "name": "Push-Up", "type": "sets", "sets": 1, "reps": 15, "weight": 0, "rest": 0, "cue": "Chest to floor. Full lockout. Same standard." },
+                { "name": "200m Run or 1 min Row", "type": "time", "duration": 60, "sets": 1, "weight": 0, "rest": 0, "cue": "Same modality as Week 2 if possible. Hard effort." }
+              ]
+            },
+            {
+              "name": "Core Finisher",
+              "duration": 5,
+              "tabata": true,
+              "tabataNote": "Final core session of the program. 2 rounds.",
+              "exercises": [
+                { "name": "Sandbag Sit-Up + Press", "type": "sets", "sets": 2, "reps": 15, "weight": 50, "rest": 30, "cue": "Last session of the program. Bring everything." },
+                { "name": "Plank Hold — Max Time", "type": "time", "duration": 60, "sets": 2, "weight": 0, "cue": "Beat your previous max. Six weeks stronger." }
+              ]
+            },
+            {
+              "name": "Final Cool-Down",
+              "duration": 7,
+              "exercises": [
+                { "name": "Pigeon Pose (Right)", "type": "time", "duration": 90, "sets": 1, "weight": 0, "cue": "Six weeks of work. You earned this. Breathe deep." },
+                { "name": "Pigeon Pose (Left)", "type": "time", "duration": 90, "sets": 1, "weight": 0, "cue": "Six weeks of work. You earned this. Breathe deep." },
+                { "name": "Supine Spinal Twist (Right)", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "Decompress the spine. Full release." },
+                { "name": "Supine Spinal Twist (Left)", "type": "time", "duration": 60, "sets": 1, "weight": 0, "cue": "Decompress the spine. Full release." },
+                { "name": "Legs-Up-The-Wall", "type": "time", "duration": 120, "sets": 1, "weight": 0, "cue": "2 full minutes. Breathe. Reflect on 6 weeks of work. You did it." }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

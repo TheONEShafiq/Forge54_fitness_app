@@ -1,0 +1,161 @@
+{
+  "bonusWorkouts": [
+    {
+      "id": "bonus1",
+      "day": "Bonus A",
+      "title": "KB Snatch + Turkish Get-Up Complex",
+      "type": "strength",
+      "duration": 40,
+      "phase": "build",
+      "equipment": ["35lb KB", "50lb KB"],
+      "neckNotes": "Turkish Get-Up: keep eyes on KB at all times. Never crane neck.",
+      "sections": [
+        {
+          "name": "Warm-Up",
+          "exercises": [
+            { "name": "World's Greatest Stretch", "type": "time", "duration": 45, "cue": "Full hip and thoracic opener. Neck neutral throughout." },
+            { "name": "KB Halo", "type": "sets", "sets": 2, "reps": 8, "weight": 20, "cue": "Light KB. Slow controlled circles around head. Mobilizes upper thoracic and shoulder girdle." },
+            { "name": "Hip Circle + Leg Swing", "type": "time", "duration": 40, "cue": "Loosen hips before heavy hinge work." }
+          ]
+        },
+        {
+          "name": "Skill Block — Turkish Get-Up",
+          "exercises": [
+            { "name": "Turkish Get-Up", "type": "sets", "sets": 3, "reps": 3, "weight": 35, "cue": "Move through each position with control. Eyes on KB the whole time — this protects your neck. 3 reps each side. The original full-body strength test." },
+            { "name": "KB Windmill", "type": "sets", "sets": 3, "reps": 8, "weight": 20, "cue": "KB overhead, push hip out to side, reach free hand down leg. Eyes on KB overhead. Builds lateral strength and hip mobility. Each side." }
+          ]
+        },
+        {
+          "name": "Power Block — KB Snatch Ladder",
+          "exercises": [
+            { "name": "KB Snatch", "type": "sets", "sets": 5, "reps": 5, "weight": 35, "cue": "Hinge hard, snap hips, punch KB overhead in one move. Bell should float — not muscle it. Corkscrew wrist at top. Each side. Most athletic KB movement." },
+            { "name": "KB Clean + Press", "type": "sets", "sets": 4, "reps": 6, "weight": 35, "cue": "Clean to rack, press overhead with control. Light neck load — brace hard. Each side." },
+            { "name": "KB Swing", "type": "sets", "sets": 3, "reps": 20, "weight": 50, "cue": "Finish with 3 sets of power swings at max weight. Pure hip drive." }
+          ]
+        },
+        {
+          "name": "Cool-Down",
+          "exercises": [
+            { "name": "Pigeon Pose", "type": "time", "duration": 55, "cue": "Full hold each side. Deep hip release after heavy hinge work." },
+            { "name": "Thoracic Rotation", "type": "time", "duration": 50, "cue": "Each side. Unwind the spine." },
+            { "name": "Child's Pose", "type": "time", "duration": 45, "cue": "Full decompress." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bonus2",
+      "day": "Bonus B",
+      "title": "EMOM Conditioning — 30 Min",
+      "type": "conditioning",
+      "duration": 38,
+      "phase": "build",
+      "equipment": ["35lb KB", "Jump Rope", "Plyo Box", "Rower"],
+      "neckNotes": "Chin in on all explosive movements. Controlled landing on box.",
+      "sections": [
+        {
+          "name": "Warm-Up",
+          "exercises": [
+            { "name": "Jump Rope", "type": "time", "duration": 120, "cue": "Build pace. Last 30 sec fast." },
+            { "name": "Arm Cross + Shoulder Roll", "type": "time", "duration": 40, "cue": "Open chest and upper back before EMOM." }
+          ]
+        },
+        {
+          "name": "EMOM 30 Min — 5 Movement Cycle",
+          "exercises": [
+            { "name": "Minute 1 — KB Swing", "type": "sets", "sets": 6, "reps": 15, "weight": 35, "cue": "15 swings on the minute. Rest the remainder. Repeat 6x. Power every rep — this is conditioning, not grinding." },
+            { "name": "Minute 2 — Box Jump", "type": "sets", "sets": 6, "reps": 10, "weight": 0, "cue": "10 explosive box jumps on the minute. Land soft. Step down. Rest remainder. 6x." },
+            { "name": "Minute 3 — Push-Up", "type": "sets", "sets": 6, "reps": 20, "weight": 0, "cue": "20 push-ups on the minute. Chest to floor. Elbows 45°. 6x." },
+            { "name": "Minute 4 — Row Sprint", "type": "time", "duration": 45, "cue": "45 sec max row. Target 800+ cal/hr. Rest remainder. 6x." },
+            { "name": "Minute 5 — Jump Rope", "type": "time", "duration": 45, "cue": "45 sec max skip. Rest remainder. 6x. That's 30 minutes total." }
+          ]
+        },
+        {
+          "name": "Cool-Down",
+          "exercises": [
+            { "name": "Easy Walk", "type": "time", "duration": 90, "cue": "Full HR recovery." },
+            { "name": "Hip Flexor Stretch", "type": "time", "duration": 50, "cue": "Deep lunge. Each side." },
+            { "name": "Figure-4 Stretch", "type": "time", "duration": 50, "cue": "Glute release. Each side." },
+            { "name": "Pigeon Pose", "type": "time", "duration": 55, "cue": "Full hold. Each side." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bonus3",
+      "day": "Bonus C",
+      "title": "Sandbag Bear Complex + Carries",
+      "type": "functional",
+      "duration": 40,
+      "phase": "peak",
+      "equipment": ["Sandbag 50lb", "Weighted Vest 20lb", "TRX"],
+      "neckNotes": "Sandbag at hip only on carries. Zero neck loading.",
+      "sections": [
+        {
+          "name": "Warm-Up",
+          "exercises": [
+            { "name": "Cat-Cow", "type": "time", "duration": 45, "cue": "Slow spinal mobilization. Breathe with each movement." },
+            { "name": "Band Pull-Apart", "type": "sets", "sets": 2, "reps": 15, "weight": 0, "cue": "Activate upper back before loading." },
+            { "name": "Hip Hinge Practice", "type": "sets", "sets": 2, "reps": 10, "weight": 0, "cue": "Prime the pattern." }
+          ]
+        },
+        {
+          "name": "Bear Complex — 5 Rounds",
+          "exercises": [
+            { "name": "Sandbag Power Clean", "type": "sets", "sets": 5, "reps": 5, "weight": 50, "cue": "Hip drive to chest. Explosive. Neck tall at catch. This is a full-body power movement." },
+            { "name": "Sandbag Front Squat", "type": "sets", "sets": 5, "reps": 5, "weight": 50, "cue": "Bag at chest. Elbows up. Deep squat. Drive hard on the way up." },
+            { "name": "Sandbag Push Press", "type": "sets", "sets": 5, "reps": 5, "weight": 40, "cue": "Dip and drive with legs, press overhead. Light load — power from legs, not shoulders. Neck neutral." },
+            { "name": "Sandbag Carry + Lunge", "type": "sets", "sets": 5, "reps": 8, "weight": 50, "cue": "Bear hug bag. Lunge 8 steps forward, 8 steps back. Weighted lunge is brutally functional." }
+          ]
+        },
+        {
+          "name": "Finisher",
+          "exercises": [
+            { "name": "TRX Row (Feet Elevated)", "type": "sets", "sets": 3, "reps": 15, "weight": 0, "cue": "Feet on bench. Most horizontal TRX row angle. Hardest version. Neck neutral." },
+            { "name": "Plank to Push-Up", "type": "sets", "sets": 3, "reps": 10, "weight": 0, "cue": "From forearm plank, push up to straight arm, lower back down. Core + chest + tricep combination." }
+          ]
+        },
+        {
+          "name": "Cool-Down",
+          "exercises": [
+            { "name": "Pigeon Pose", "type": "time", "duration": 60, "cue": "Full minute each side after heavy carry work." },
+            { "name": "Thoracic Extension on Bench", "type": "time", "duration": 50, "cue": "Open thoracic spine after front-loaded carries." },
+            { "name": "Legs-Up-The-Wall", "type": "time", "duration": 90, "cue": "Full recovery. Breathe slow. Let everything go." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bonus4",
+      "day": "Bonus D",
+      "title": "Advanced Mobility — Couch Stretch + Thoracic Flow",
+      "type": "cardio_mobility",
+      "duration": 35,
+      "phase": "deload",
+      "equipment": ["Resistance Bands", "Bench"],
+      "neckNotes": "Pure mobility. Zero loading.",
+      "sections": [
+        {
+          "name": "Warm-Up Flow",
+          "exercises": [
+            { "name": "Cat-Cow", "type": "time", "duration": 60, "cue": "Slow and breathing. Full range each direction." },
+            { "name": "World's Greatest Stretch", "type": "time", "duration": 60, "cue": "Full hold. Explore range today." }
+          ]
+        },
+        {
+          "name": "Advanced Mobility Circuit",
+          "exercises": [
+            { "name": "Couch Stretch", "type": "time", "duration": 60, "cue": "Back foot on bench, front knee 90°. Drive hip forward. One of the best hip flexor releases there is. Each side. 60 sec full hold." },
+            { "name": "90/90 Hip Flow", "type": "time", "duration": 60, "cue": "Both knees at 90°. Lean over front shin. Rotate to back shin. Explore full range. Don't rush." },
+            { "name": "Thread the Needle", "type": "time", "duration": 50, "cue": "On all fours. Thread one arm under body, rotating thoracic spine. Hold. Each side. Excellent T-spine rotation." },
+            { "name": "Quadruped T-Spine Rotation", "type": "time", "duration": 50, "cue": "On all fours. Hand behind head. Rotate elbow toward ceiling. Each side. Builds rotational mobility critical for carries and rows." },
+            { "name": "Deep Squat Hold", "type": "time", "duration": 60, "cue": "Hold TRX for balance. Sink into deep squat. Heels down. Breathe and relax into it. Hip, ankle, and thoracic all in one." },
+            { "name": "Lizard Pose", "type": "time", "duration": 60, "cue": "Front foot outside hand. Back knee down. Sink deep. Longest hold yet. Each side." },
+            { "name": "Band Shoulder Distraction", "type": "time", "duration": 50, "cue": "Band anchored low. Arm through band, rotate. Shoulder joint traction and release. Each side." },
+            { "name": "Legs-Up-The-Wall", "type": "time", "duration": 120, "cue": "Full 2 minutes. Breathe slow. Complete parasympathetic recovery." }
+          ]
+        }
+      ]
+    }
+  ]
+}
