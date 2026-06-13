@@ -30,7 +30,6 @@ export function buildIntervalAnnouncement(round: number, total: number, isWork: 
   return isWork ? `Interval ${round} of ${total}. ${label}.` : `Rest. ${label}.`;
 }
 
-
 export function buildAnnouncement(ex: any): string {
   let text = ex.name || '';
   if (ex.type === 'sets' && ex.sets && ex.reps) {
@@ -49,14 +48,12 @@ export function buildAnnouncement(ex: any): string {
 
 export async function playBell(): Promise<void> {
   try {
-    const { Audio } = require('expo-av');
-    await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-    const { sound } = await Audio.Sound.createAsync(
-      require('../../assets/bell.mp3'),
-      { shouldPlay: true }
-    );
-    setTimeout(() => sound.unloadAsync(), 3000);
+    const { AudioPlayer, setAudioModeAsync } = await import('expo-audio');
+    await setAudioModeAsync({ playsInSilentModeIOS: true });
+    const player = new AudioPlayer(require('../../assets/bell.mp3'));
+    player.play();
+    setTimeout(() => player.remove(), 3000);
   } catch {
-    // bell.mp3 missing or expo-av error — silent fallback
+    // bell.mp3 missing or expo-audio error — silent fallback
   }
 }
