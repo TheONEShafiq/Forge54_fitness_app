@@ -46,14 +46,8 @@ export function buildAnnouncement(ex: any): string {
   return text;
 }
 
+// Bell sound disabled pending expo-audio hooks migration
+// Will be re-enabled via a dedicated audio component in the workout player
 export async function playBell(): Promise<void> {
-  try {
-    const { AudioPlayer, setAudioModeAsync } = await import('expo-audio');
-    await setAudioModeAsync({ playsInSilentModeIOS: true });
-    const player = new AudioPlayer(require('../../assets/bell.mp3'));
-    player.play();
-    setTimeout(() => player.remove(), 3000);
-  } catch {
-    // bell.mp3 missing or expo-audio error — silent fallback
-  }
+  // no-op
 }
