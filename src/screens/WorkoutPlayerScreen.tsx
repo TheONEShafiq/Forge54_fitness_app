@@ -10,7 +10,7 @@ import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { speak, stopSpeech, playBell } from '../utils/ttsService';
 import {
-  INTERVAL_MAP, isUnilateral, SUBS, getSubs,
+  INTERVAL_MAP, SUBS, getSubs,
   flattenExercises, buildExerciseAnnouncementText,
 } from '../utils/workoutAnnouncements';
 import type { IntervalDef } from '../utils/workoutAnnouncements';
@@ -66,6 +66,8 @@ export default function WorkoutPlayerScreen() {
   const [showSwap, setShowSwap] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [currentSetIdx, setCurrentSetIdx] = useState(0);
+  // Which of `sides` a timed unilateral exercise is on.
+  const [sideIdx, setSideIdx] = useState(0);
 
   const timerRef = useRef<any>(null);
   const sessionRef = useRef<any>(null);
@@ -112,24 +114,28 @@ export default function WorkoutPlayerScreen() {
     setIntervalRound(1);
     setIntervalIsWork(true);
     setTimerMode('exercise');
+    setSideIdx(0);
 
     if (ex.type === 'sets') {
-      // Build alternating L/R set entries for unilateral non-split exercises
-      const uni = isUnilateral(ex.name) && !ex.side;
-      const totalRows = uni ? (ex.sets || 3) * 2 : (ex.sets || 3);
+      // Unilateral exercises get one row per side per set, in authored side order.
+      const sides: string[] | undefined = ex.sides;
+      const totalRows = (ex.sets || 3) * (sides ? sides.length : 1);
       if (!allSetLogs[exIdx]) {
-        const entries = Array.from({ length: totalRows }, (_, i) => ({
-          reps: ex.reps || 0,
-          weight: ex.weight || 0,
-          plannedReps: ex.reps || 0,
-          plannedWeight: ex.weight || 0,
-          side: uni ? (i % 2 === 0 ? 'left' : 'right') : undefined,
-          completed: false,
-          completedAt: null as string | null,
-          label: uni
-            ? (i % 2 === 0 ? `Set ${Math.floor(i/2)+1} — Left` : `Set ${Math.floor(i/2)+1} — Right`)
-            : `Set ${i+1}`,
-        }));
+        const entries = Array.from({ length: totalRows }, (_, i) => {
+          const side = sides ? sides[i % sides.length] : undefined;
+          const plan = side ? ex.perSide[side] : { reps: ex.reps || 0, weight: ex.weight || 0 };
+          const setNum = sides ? Math.floor(i / sides.length) + 1 : i + 1;
+          return {
+            reps: plan.reps,
+            weight: plan.weight,
+            plannedReps: plan.reps,
+            plannedWeight: plan.weight,
+            side,
+            completed: false,
+            completedAt: null as string | null,
+            label: side ? `Set ${setNum} — ${side === 'left' ? 'Left' : 'Right'}` : `Set ${setNum}`,
+          };
+        });
         setAllSetLogs(prev => ({ ...prev, [exIdx]: entries }));
       }
     } else {
@@ -187,7 +193,11 @@ export default function WorkoutPlayerScreen() {
     }, 1000);
   }
 
-  function startExerciseTimer() {
+  function sideDuration(ex: any, side: number): number {
+    return (ex.sides && ex.perSide[ex.sides[side]]?.duration) || ex.duration || 0;
+  }
+
+  function startExerciseTimer(side = sideIdx) {
     const ex = currentEx;
     if (!ex || ex.type !== 'time') return;
 
@@ -201,7 +211,7 @@ export default function WorkoutPlayerScreen() {
     } else {
       // Simple timed exercise
       setTimerMode('exercise');
-      setTimerValue(ex.duration || 0);
+      setTimerValue(sideDuration(ex, side));
       setTimerRunning(true);
       timerRef.current = setInterval(() => {
         setTimerValue(v => {
@@ -210,6 +220,13 @@ export default function WorkoutPlayerScreen() {
             setTimerRunning(false);
             startCountdownThen(() => {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              // Unilateral holds run the next side straight away — no rest between sides.
+              if (ex.sides && side < ex.sides.length - 1) {
+                setSideIdx(side + 1);
+                safeSpeak('Switch sides.');
+                startExerciseTimer(side + 1);
+                return;
+              }
               // Auto-advance to rest or next exercise
               const restSec = ex.restAfter || 0;
               if (restSec > 0) {
@@ -297,11 +314,16 @@ export default function WorkoutPlayerScreen() {
 
   // After a set is completed (or skipped), rest and progression happen on
   // their own — no separate "Next/Rest" tap needed.
-  function progressAfterSetChange(updatedEntries: any[]) {
+  function progressAfterSetChange(updatedEntries: any[], idx: number) {
     const ex = currentEx;
     const completedSets = updatedEntries.filter((e: any) => e.completed).length;
+    const nextRow = updatedEntries[idx + 1];
     if (completedSets >= updatedEntries.length) {
       advanceExercise();
+    } else if (ex?.sides && nextRow && !nextRow.completed && nextRow.side !== updatedEntries[idx].side
+               && Math.floor((idx + 1) / ex.sides.length) === Math.floor(idx / ex.sides.length)) {
+      // Other side of the same set is next: no rest in between.
+      safeSpeak('Switch sides.');
     } else if (ex?.restAfter > 0) {
       startRestTimer(ex.restAfter, () => {
         safeSpeak('Next set.');
@@ -326,7 +348,7 @@ export default function WorkoutPlayerScreen() {
     const updated = entries.map((e: any, i: number) => i === idx ? { ...e, completed: true, skipped: true } : e);
     setAllSetLogs(prev => ({ ...prev, [exIdx]: updated }));
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    progressAfterSetChange(updated);
+    progressAfterSetChange(updated, idx);
   }
 
   function skipRest() {
@@ -469,7 +491,7 @@ export default function WorkoutPlayerScreen() {
     );
     setAllSetLogs(prev => ({ ...prev, [exIdx]: updated }));
     // Only auto-progress on the completing tap, not on un-checking a set.
-    if (!wasCompleted) progressAfterSetChange(updated);
+    if (!wasCompleted) progressAfterSetChange(updated, idx);
   }
 
   function doSwap(sub: any) {
@@ -516,10 +538,10 @@ export default function WorkoutPlayerScreen() {
                       <Text style={[s.exRowName, isDone && { color: C.textDim }]}>{ex.displayName || ex.name}</Text>
                       <Text style={s.exRowMeta}>
                         {ex.type === 'sets'
-                          ? `${ex.sets} sets × ${ex.reps} reps${ex.weight > 0 ? ` · ${ex.weight} lb` : ''}${isUnilateral(ex.name) && !ex.side ? ' (L+R)' : ''}`
+                          ? `${ex.sets} sets × ${ex.reps} reps${ex.weight > 0 ? ` · ${ex.weight} lb` : ''}${ex.sides ? ' · each side' : ''}`
                           : def
                             ? `${def.isTabata ? 'Tabata · ' : ''}${def.rounds} rounds · ${def.workSec}s on / ${def.restSec}s off`
-                            : `${Math.floor((ex.duration||0)/60)}:${String((ex.duration||0)%60).padStart(2,'0')}`}
+                            : `${Math.floor((ex.duration||0)/60)}:${String((ex.duration||0)%60).padStart(2,'0')}${ex.sides ? ' each side' : ''}`}
                         {ex.restAfter > 0 && !def ? ` · ${ex.restAfter}s rest` : ''}
                       </Text>
                     </View>
@@ -566,7 +588,7 @@ export default function WorkoutPlayerScreen() {
         <View style={[s.phaseBadge, { backgroundColor: phaseColor + '22', borderColor: phaseColor + '55' }]}>
           <Text style={[s.phaseBadgeText, { color: phaseColor }]}>
             {isResting ? 'REST' :
-             currentEx.side ? currentEx.side.toUpperCase() :
+             currentEx.sides && currentEx.type === 'time' ? `${currentEx.sides[sideIdx].toUpperCase()} SIDE` :
              currentEx.phase === 'warmup' ? 'Warm-up' :
              currentEx.phase === 'cooldown' ? 'Cool-down' : 'Work'}
           </Text>
@@ -614,9 +636,10 @@ export default function WorkoutPlayerScreen() {
                   const entries = allSetLogs[exIdx] || [];
                   const done = entries.filter((e: any) => e.completed).length;
                   const total = entries.length;
-                  return done >= total
-                    ? `Next: ${exerciseList[exIdx + 1]?.displayName || exerciseList[exIdx + 1]?.name || 'Done'}`
-                    : `Set ${done + 1} of ${total} up next`;
+                  if (done >= total) return `Next: ${exerciseList[exIdx + 1]?.displayName || exerciseList[exIdx + 1]?.name || 'Done'}`;
+                  // Unilateral rows are "Set N — Side"; a plain row count would read "Set 3 of 6".
+                  if (currentEx.sides) return `${entries.find((e: any) => !e.completed)?.label} up next`;
+                  return `Set ${done + 1} of ${total} up next`;
                 })()}
               </Text>
             )}
@@ -625,7 +648,7 @@ export default function WorkoutPlayerScreen() {
           /* Set logger */
           <View style={s.setLogBlock}>
             <Text style={s.setLogTitle}>
-              Log your sets{isUnilateral(currentEx.name) && !currentEx.side ? ' — alternating L/R' : ''}
+              Log your sets{currentEx.sides ? ' — alternating sides' : ''}
             </Text>
             <View style={s.setHeader}>
               <Text style={[s.setHeaderText, { flex: 1.6 }]}>Set</Text>

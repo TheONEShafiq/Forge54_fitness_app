@@ -48,16 +48,42 @@ export const INTERVAL_MAP: Record<string, IntervalDef> = {
   'Sprint Run':            { rounds:6, workSec:20, restSec:40, workLabel:'All-out sprint', restLabel:'Walk back' },
 };
 
-// ── Unilateral detection ──────────────────────────────────────────────────────
-export const UNI_KEYWORDS = [
-  'single-arm','single arm','single-leg','single leg','rdl','lunge',
-  'step-up','step up','hip flexor','pigeon','figure-4','figure 4',
-  'hamstring stretch','quad stretch','lizard','90/90','band shoulder',
-  'leg swing','doorway','couch stretch','carry','row',
-];
-export function isUnilateral(name: string) {
-  const n = name.toLowerCase();
-  return UNI_KEYWORDS.some(u => n.includes(u));
+// ── Unilateral pairs ──────────────────────────────────────────────────────────
+// The program authors each unilateral movement as a "(Right)" entry and a
+// "(Left)" entry. Whether an exercise is unilateral comes only from that data —
+// never from keywords in the name (which also matched bilateral rows/carries).
+export type Side = 'left' | 'right';
+const SIDE_SUFFIX = /^(.*) \((Right|Left)\)$/;
+
+// Merges each authored (Right)/(Left) pair into one exercise with `sides` in
+// authored order. `perSide` keeps each side's own prescription, since
+// progression overrides can differ by side. The second entry's rest is the
+// rest after a full set of both sides; there is no rest between sides.
+function mergeSidePairs(exercises: any[]): any[] {
+  const used = new Set<number>();
+  const out: any[] = [];
+  exercises.forEach((ex, i) => {
+    if (used.has(i)) return;
+    const m = ex.name.match(SIDE_SUFFIX);
+    if (!m) { out.push(ex); return; }
+    const [, base, firstSide] = m;
+    const otherName = `${base} (${firstSide === 'Right' ? 'Left' : 'Right'})`;
+    const j = exercises.findIndex((o, k) => k > i && !used.has(k) && o.name === otherName && o.type === ex.type);
+    if (j < 0) { out.push(ex); return; }
+    used.add(j);
+    const second = exercises[j];
+    const sides: Side[] = firstSide === 'Right' ? ['right', 'left'] : ['left', 'right'];
+    const pick = (e: any) => ({ reps: e.reps || 0, weight: e.weight || 0, duration: e.duration || 0 });
+    out.push({
+      ...ex,
+      name: base,
+      sets: Math.max(ex.sets || 1, second.sets || 1),
+      rest: typeof second.rest === 'number' ? second.rest : ex.rest,
+      sides,
+      perSide: { [sides[0]]: pick(ex), [sides[1]]: pick(second) },
+    });
+  });
+  return out;
 }
 
 // ── Substitutions ─────────────────────────────────────────────────────────────
@@ -93,23 +119,18 @@ export const SUBS: Record<string, any[]> = {
 };
 export function getSubs(name: string) { return SUBS[name] || SUBS['default']; }
 
-// ── Flatten — unilateral cooldown stretches split L/R ─────────────────────────
+// ── Flatten ───────────────────────────────────────────────────────────────────
 export function flattenExercises(workout: any) {
   const exs: any[] = [];
   workout.sections.forEach((s: any) => {
     const phase = s.name.toLowerCase().includes('warm') ? 'warmup' :
                   s.name.toLowerCase().includes('cool') ? 'cooldown' : 'work';
     const fallbackRestSec = getRestDuration(s.name, workout.type);
-    s.exercises.forEach((ex: any) => {
+    mergeSidePairs(s.exercises).forEach((ex: any) => {
       // Prefer the rest value the program author wrote for this exercise;
       // only fall back to the section/type heuristic when none was given.
       const restSec = typeof ex.rest === 'number' ? ex.rest : fallbackRestSec;
-      if (phase === 'cooldown' && isUnilateral(ex.name) && ex.type === 'time') {
-        exs.push({ ...ex, phase, sectionName: s.name, restAfter: 0, side: 'Left', displayName: ex.name + ' — Left' });
-        exs.push({ ...ex, phase, sectionName: s.name, restAfter: 0, side: 'Right', displayName: ex.name + ' — Right' });
-      } else {
-        exs.push({ ...ex, phase, sectionName: s.name, restAfter: restSec, displayName: ex.name });
-      }
+      exs.push({ ...ex, phase, sectionName: s.name, restAfter: restSec, displayName: ex.name });
     });
   });
   return exs;
@@ -118,7 +139,7 @@ export function flattenExercises(workout: any) {
 // ── Pure text builder (no side effects — safe to call from a Node script) ────
 export function buildExerciseAnnouncementText(ex: any): string {
   let text = ex.displayName || ex.name;
-  if (ex.side) text = ex.name + ', ' + ex.side + ' side';
+  if (ex.sides) text = ex.name + ', each side';
   if (ex.type === 'sets' && ex.sets && ex.reps) {
     const w = ex.weight > 0 ? `, ${ex.weight} pounds` : ', bodyweight';
     text += `. ${ex.sets} sets of ${ex.reps} reps${w}.`;
@@ -137,6 +158,7 @@ export const FIXED_PHRASES = [
   '3', '2', '1',
   'Skipping rest.',
   'Next set.',
+  'Switch sides.',
   'All intervals complete. Great work.',
   'Workout complete. Great job today.',
 ];
