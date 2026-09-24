@@ -2,49 +2,82 @@
  * ProgressScreen.tsx  
  * Four tabs: Weekly / Monthly / Exercises / Garmin
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert } from 'react-native';
 import { colors, spacing, radius } from '../theme';
-import { getWeeklyStats, getMonthlyStats, getExerciseProgression, getGarminToken } from '../store/workoutStore';
+import { getWeeklyStats, getMonthlyStats, getExerciseProgression, getGarminToken, getAllLogs, isPerformed, logVolume } from '../store/workoutStore';
 import { connectGarminAccount, getGarminClientId } from '../utils/garminSync';
 
-const TRACKED_EXERCISES = ['KB Swing', 'KB Deadlift', 'Sandbag Clean to Shoulder', 'TRX Row'];
+const MAX_TRACKED_EXERCISES = 4;
+const DAY_LABELS = ['Su', 'M', 'T', 'W', 'T', 'F', 'S'];
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function formatVolume(lb: number): string {
+  return lb >= 1000 ? `${(lb / 1000).toFixed(1)}k lb` : `${Math.round(lb)} lb`;
+}
+
+function pctChange(now: number, prev: number): string | null {
+  if (!prev) return null;
+  const pct = Math.round(((now - prev) / prev) * 100);
+  return `${pct >= 0 ? '+' : ''}${pct}%`;
+}
 const TABS = ['Weekly', 'Monthly', 'Exercises', 'Garmin'];
 
 export default function ProgressScreen() {
   const [activeTab, setActiveTab] = useState(0);
   const [weekStats, setWeekStats] = useState<any>(null);
+  const [lastWeekStats, setLastWeekStats] = useState<any>(null);
   const [monthStats, setMonthStats] = useState<any>(null);
   const [exProgress, setExProgress] = useState<Record<string, any[]>>({});
   const [garminConnected, setGarminConnected] = useState(false);
   const [garminConnecting, setGarminConnecting] = useState(false);
 
-  useEffect(() => {
+  // Reload on focus so a session saved moments ago shows up without a restart.
+  useFocusEffect(useCallback(() => {
     getWeeklyStats().then(setWeekStats);
+    getWeeklyStats(1).then(setLastWeekStats);
     getMonthlyStats().then(setMonthStats);
     getGarminToken().then(token => setGarminConnected(!!token));
-    Promise.all(TRACKED_EXERCISES.map(async name => ({
-      name,
-      data: await getExerciseProgression(name)
-    }))).then(results => {
+    // Track the weighted exercises that show up most often in real logs.
+    getAllLogs().then(all => {
+      const freq: Record<string, number> = {};
+      for (const log of Object.values(all)) {
+        for (const ex of log.exercises) {
+          if (ex.sets.some(st => isPerformed(st) && st.weight > 0)) freq[ex.exerciseName] = (freq[ex.exerciseName] || 0) + 1;
+        }
+      }
+      const names = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, MAX_TRACKED_EXERCISES).map(([n]) => n);
+      return Promise.all(names.map(async name => ({ name, data: await getExerciseProgression(name) })));
+    }).then(results => {
       const map: Record<string, any[]> = {};
       results.forEach(r => { map[r.name] = r.data; });
       setExProgress(map);
     });
-  }, []);
+  }, []));
 
-  // Simulated data for demo
-  const weeklyBars = [
-    { day: 'M', vol: 3200 }, { day: 'T', vol: 2900 }, { day: 'W', vol: 0 },
-    { day: 'T', vol: 3100 }, { day: 'F', vol: 3200 }, { day: 'S', vol: 0 }, { day: 'Su', vol: 0 },
-  ];
+  // Week runs Sunday–Saturday, matching getWeeklyStats.
+  const weeklyBars = DAY_LABELS.map((day, i) => ({
+    day,
+    vol: (weekStats?.weekLogs || [])
+      .filter((l: any) => new Date(l.completedAt).getDay() === i)
+      .reduce((sum: number, l: any) => sum + logVolume(l), 0),
+  }));
   const maxVol = Math.max(...weeklyBars.map(b => b.vol), 1);
+  const weekSessions = weekStats?.weekLogs?.length || 0;
+  const weekChange = pctChange(weekStats?.totalVolume || 0, lastWeekStats?.totalVolume || 0);
 
-  const monthlyBars = [
-    { mo: 'Dec', vol: 38000 }, { mo: 'Jan', vol: 42000 }, { mo: 'Feb', vol: 45000 },
-    { mo: 'Mar', vol: 48000 }, { mo: 'Apr', vol: 52000 }, { mo: 'May', vol: 54000 },
-  ];
-  const maxMo = Math.max(...monthlyBars.map(b => b.vol));
+  const now = new Date();
+  const monthlyBars = Array.from({ length: 6 }, (_, k) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - k), 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    return { mo: MONTH_LABELS[d.getMonth()], vol: monthStats?.[key]?.volume || 0, count: monthStats?.[key]?.count || 0 };
+  });
+  const maxMo = Math.max(...monthlyBars.map(b => b.vol), 1);
+  const thisMonth = monthlyBars[5];
+  const lastMonth = monthlyBars[4];
+  const monthChange = pctChange(thisMonth.vol, lastMonth.vol);
+  const exProgressList = Object.entries(exProgress).filter(([, data]) => data.length > 0);
 
   async function handleConnectGarmin() {
     const clientId = await getGarminClientId();
@@ -67,11 +100,6 @@ export default function ProgressScreen() {
     }
   }
 
-  const demoExProgress = [
-    { name: 'KB Swing', unit: 'lbs', data: [35, 35, 40, 40, 45, 50], weeks: ['W1','W2','W3','W4','W5','W6'] },
-    { name: 'KB Deadlift', unit: 'lbs', data: [35, 50, 50, 50, 50, 50], weeks: ['W1','W2','W3','W4','W5','W6'] },
-    { name: 'Sandbag Clean', unit: 'lbs', data: [30, 30, 35, 40, 40, 45], weeks: ['W1','W2','W3','W4','W5','W6'] },
-  ];
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -102,10 +130,10 @@ export default function ProgressScreen() {
             </View>
             <View style={styles.statsGrid}>
               {[
-                { label: 'Workouts done', value: '3 / 4' },
-                { label: 'Total volume', value: '12.4k lb' },
-                { label: 'Avg intensity', value: '7.2 / 10' },
-                { label: 'vs last week', value: '+18%', positive: true },
+                { label: 'Workouts completed', value: String(weekStats?.workoutsCompleted || 0) },
+                { label: 'Partial sessions', value: String(weekStats?.workoutsPartial || 0) },
+                { label: 'Total volume', value: formatVolume(weekStats?.totalVolume || 0) },
+                { label: 'vs last week', value: weekChange ?? '—', positive: !!weekChange && !weekChange.startsWith('-') },
               ].map(s => (
                 <View key={s.label} style={styles.statCard}>
                   <Text style={styles.statLabel}>{s.label}</Text>
@@ -123,17 +151,17 @@ export default function ProgressScreen() {
             <View style={styles.barChart}>
               {monthlyBars.map((b, i) => (
                 <View key={i} style={styles.barCol}>
-                  <View style={[styles.bar, { height: Math.round((b.vol / maxMo) * 80), backgroundColor: colors.accent, opacity: 0.4 + 0.6 * (i / 5) }]} />
+                  <View style={[styles.bar, { height: b.vol ? Math.round((b.vol / maxMo) * 80) : 4, backgroundColor: b.vol ? colors.accent : colors.bgElevated, opacity: 0.4 + 0.6 * (i / 5) }]} />
                   <Text style={styles.barLabel}>{b.mo}</Text>
                 </View>
               ))}
             </View>
             <View style={styles.statsGrid}>
               {[
-                { label: 'Workouts/mo', value: '16' },
-                { label: 'Consistency', value: '84%' },
-                { label: 'Strength trend', value: '↑ 12%', positive: true },
-                { label: 'Cardio trend', value: '↑ 8%', positive: true },
+                { label: 'Sessions this month', value: String(thisMonth.count) },
+                { label: 'Volume this month', value: formatVolume(thisMonth.vol) },
+                { label: 'Avg per session', value: formatVolume(thisMonth.count ? thisMonth.vol / thisMonth.count : 0) },
+                { label: 'vs last month', value: monthChange ?? '—', positive: !!monthChange && !monthChange.startsWith('-') },
               ].map(s => (
                 <View key={s.label} style={styles.statCard}>
                   <Text style={styles.statLabel}>{s.label}</Text>
@@ -148,21 +176,27 @@ export default function ProgressScreen() {
         {activeTab === 2 && (
           <View style={styles.tabContent}>
             <Text style={styles.sectionLabel}>PER-EXERCISE PROGRESSION</Text>
-            {demoExProgress.map(ex => {
-              const maxV = Math.max(...ex.data);
+            {exProgressList.length === 0 && (
+              <Text style={styles.exChartUnit}>No weighted sets logged yet. Progression shows up here after your first sessions.</Text>
+            )}
+            {exProgressList.map(([name, points]) => {
+              // Last 6 sessions, max weight lifted in each.
+              const recent = points.slice(-6);
+              const data = recent.map((pt: any) => pt.maxWeight);
+              const maxV = Math.max(...data, 1);
               return (
-                <View key={ex.name} style={styles.exChart}>
-                  <Text style={styles.exChartName}>{ex.name} <Text style={styles.exChartUnit}>({ex.unit})</Text></Text>
+                <View key={name} style={styles.exChart}>
+                  <Text style={styles.exChartName}>{name} <Text style={styles.exChartUnit}>(lbs)</Text></Text>
                   <View style={styles.exBars}>
-                    {ex.data.map((v, i) => (
-                      <View key={i} style={[styles.exBar, { height: Math.round((v / maxV) * 48) + 8, opacity: 0.5 + 0.5 * (i / (ex.data.length - 1)) }]} />
+                    {data.map((v: number, i: number) => (
+                      <View key={i} style={[styles.exBar, { height: Math.round((v / maxV) * 48) + 8, opacity: 0.5 + 0.5 * (i / Math.max(data.length - 1, 1)) }]} />
                     ))}
                   </View>
                   <View style={styles.exBarLabels}>
-                    {ex.weeks.map(w => <Text key={w} style={styles.exBarLabel}>{w}</Text>)}
+                    {recent.map((pt: any, i: number) => <Text key={i} style={styles.exBarLabel}>{pt.date.slice(5)}</Text>)}
                   </View>
                   <Text style={styles.exRange}>
-                    {ex.data[0]} → <Text style={{ color: colors.success, fontWeight: '700' }}>{ex.data[ex.data.length - 1]} {ex.unit}</Text>
+                    {data[0]} → <Text style={{ color: colors.success, fontWeight: '700' }}>{data[data.length - 1]} lbs</Text>
                   </Text>
                 </View>
               );
@@ -174,6 +208,7 @@ export default function ProgressScreen() {
         {activeTab === 3 && (
           <View style={styles.tabContent}>
             <Text style={styles.sectionLabel}>LATEST WORKOUT · GARMIN DATA</Text>
+            <Text style={styles.exChartUnit}>Sample data — Garmin sync isn't live yet.</Text>
             <View style={styles.garminCard}>
               <Text style={styles.garminWorkoutName}>TRX + Sandbag Circuit</Text>
               {[
