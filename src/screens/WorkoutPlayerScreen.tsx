@@ -6,8 +6,14 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { saveWorkoutLog } from '../store/workoutStore';
 import * as Haptics from 'expo-haptics';
-import * as Speech from 'expo-speech';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import { speak, stopSpeech, playBell } from '../utils/ttsService';
+import {
+  INTERVAL_MAP, isUnilateral, SUBS, getSubs,
+  flattenExercises, buildExerciseAnnouncementText,
+} from '../utils/workoutAnnouncements';
+import type { IntervalDef } from '../utils/workoutAnnouncements';
+import { resolveWorkout } from '../utils/workoutResolver';
 import workoutData from '../../workouts.json';
 
 const C = {
@@ -21,135 +27,13 @@ const PHASE_COLOR: Record<string, string> = {
   warmup: C.lime, work: C.lime, cooldown: C.cooldown, rest: C.rest,
 };
 
-// ── Rest durations by block type (seconds) ───────────────────────────────────
-const REST_BY_TYPE: Record<string, number> = {
-  tabata: 10,        // Tabata: strict 10s rest
-  hiit: 20,          // HIIT: short rest
-  conditioning: 30,  // Conditioning circuits
-  strength: 60,      // Strength blocks
-  functional: 45,    // Functional circuits
-  warmup: 0,         // No rest in warmup
-  cooldown: 0,       // No rest in cooldown
-};
-
-function getRestDuration(sectionName: string, workoutType: string): number {
-  const s = sectionName.toLowerCase();
-  if (s.includes('tabata')) return REST_BY_TYPE.tabata;
-  if (s.includes('hiit') || s.includes('emom') || s.includes('amrap')) return REST_BY_TYPE.hiit;
-  if (s.includes('warm') || s.includes('cool')) return 0;
-  if (workoutType === 'conditioning') return REST_BY_TYPE.conditioning;
-  if (workoutType === 'functional') return REST_BY_TYPE.functional;
-  return REST_BY_TYPE.strength;
-}
-
-// ── Tabata & Interval definitions ─────────────────────────────────────────────
-interface IntervalDef {
-  rounds: number; workSec: number; restSec: number;
-  workLabel: string; restLabel: string; isTabata?: boolean;
-}
-const INTERVAL_MAP: Record<string, IntervalDef> = {
-  // True Tabata — 20s work / 10s rest / 8 rounds
-  'Row Sprints (Tabata)':  { rounds:8, workSec:20, restSec:10, workLabel:'Max effort — all out', restLabel:'10 seconds rest', isTabata:true },
-  'Box Jumps (Tabata)':    { rounds:8, workSec:20, restSec:10, workLabel:'Explode — max height', restLabel:'10 seconds rest', isTabata:true },
-  'Bag Strikes (Tabata)':  { rounds:8, workSec:20, restSec:10, workLabel:'Max combos', restLabel:'10 seconds rest', isTabata:true },
-  'Jump Rope (Tabata)':    { rounds:8, workSec:20, restSec:10, workLabel:'Max speed', restLabel:'10 seconds rest', isTabata:true },
-  // HIIT intervals
-  'Bike Intervals':        { rounds:5, workSec:90, restSec:90, workLabel:'Go hard — Zone 4', restLabel:'Easy spin, recover' },
-  'Row Intervals':         { rounds:5, workSec:90, restSec:90, workLabel:'Max effort row', restLabel:'Easy row, recover' },
-  'Run Intervals':         { rounds:5, workSec:90, restSec:90, workLabel:'Hard run', restLabel:'Walk or easy jog' },
-  'Row Sprint':            { rounds:4, workSec:45, restSec:75, workLabel:'Sprint', restLabel:'Rest' },
-  'Jump Rope Fast':        { rounds:4, workSec:30, restSec:30, workLabel:'Max speed', restLabel:'Rest' },
-  'Jump Rope Intervals':   { rounds:5, workSec:60, restSec:60, workLabel:'Fast skip', restLabel:'Easy skip' },
-  'Row Pyramid':           { rounds:5, workSec:60, restSec:30, workLabel:'Hard effort', restLabel:'Easy recovery' },
-  'Sprint Run':            { rounds:6, workSec:20, restSec:40, workLabel:'All-out sprint', restLabel:'Walk back' },
-};
-
-// ── Unilateral detection ──────────────────────────────────────────────────────
-const UNI_KEYWORDS = [
-  'single-arm','single arm','single-leg','single leg','rdl','lunge',
-  'step-up','step up','hip flexor','pigeon','figure-4','figure 4',
-  'hamstring stretch','quad stretch','lizard','90/90','band shoulder',
-  'leg swing','doorway','couch stretch','carry','row',
-];
-function isUnilateral(name: string) {
-  const n = name.toLowerCase();
-  return UNI_KEYWORDS.some(u => n.includes(u));
-}
-
-// ── Substitutions ─────────────────────────────────────────────────────────────
-const SUBS: Record<string, any[]> = {
-  'Easy Bike': [
-    { name:'Easy Row', type:'time', duration:180, phase:'warmup', cue:'Easy Zone 2 row. Long strokes, breathe.' },
-    { name:'Easy Run', type:'time', duration:180, phase:'warmup', cue:'Easy jog warm-up. Conversational pace.' },
-    { name:'Jump Rope Easy', type:'time', duration:180, phase:'warmup', cue:'Easy skip. Get blood moving.' },
-  ],
-  'Bike Intervals': [
-    { name:'Row Intervals', type:'time', duration:900, phase:'work', cue:'5 rounds: 90 sec hard row, 90 sec easy.' },
-    { name:'Run Intervals', type:'time', duration:900, phase:'work', cue:'5 rounds: 90 sec hard run, 90 sec walk.' },
-    { name:'Jump Rope Intervals', type:'time', duration:900, phase:'work', cue:'5 rounds: 60 sec fast, 60 sec rest.' },
-  ],
-  'Row Sprint': [
-    { name:'Bike Sprint', type:'time', duration:45, phase:'work', cue:'Max effort bike 45 sec.' },
-    { name:'Sprint Run', type:'time', duration:45, phase:'work', cue:'All-out sprint 45 sec. Drive arms.' },
-    { name:'Jump Rope Sprint', type:'time', duration:45, phase:'work', cue:'Max speed jump rope 45 sec.' },
-  ],
-  'Easy Row': [
-    { name:'Easy Bike', type:'time', duration:120, phase:'warmup', cue:'Easy Zone 2 bike. Spin loose.' },
-    { name:'Easy Run', type:'time', duration:120, phase:'warmup', cue:'Easy jog warm-up. Relax.' },
-  ],
-  'Box Jump': [
-    { name:'Box Step-Up Fast', type:'sets', sets:4, reps:12, weight:0, phase:'work', cue:'Fast alternating step-ups. High knees.' },
-    { name:'Jump Squat', type:'sets', sets:4, reps:10, weight:0, phase:'work', cue:'Squat down, explode up. Land soft.' },
-  ],
-  'default': [
-    { name:'Band Pull-Apart', type:'sets', sets:3, reps:15, weight:0, phase:'work', cue:'Pull band apart to chest. Squeeze blades.' },
-    { name:'Dead Bug', type:'sets', sets:3, reps:10, weight:0, phase:'work', cue:'On back. Lower opposite arm/leg. Press low back down.' },
-    { name:'Easy Run', type:'time', duration:300, phase:'work', cue:'5 min easy run as substitute.' },
-  ],
-};
-function getSubs(name: string) { return SUBS[name] || SUBS['default']; }
-
-// ── Flatten — unilateral cooldown stretches split L/R ─────────────────────────
-function flattenExercises(workout: any) {
-  const exs: any[] = [];
-  workout.sections.forEach((s: any) => {
-    const phase = s.name.toLowerCase().includes('warm') ? 'warmup' :
-                  s.name.toLowerCase().includes('cool') ? 'cooldown' : 'work';
-    const restSec = getRestDuration(s.name, workout.type);
-    s.exercises.forEach((ex: any) => {
-      if (phase === 'cooldown' && isUnilateral(ex.name) && ex.type === 'time') {
-        exs.push({ ...ex, phase, sectionName: s.name, restAfter: 0, side: 'Left', displayName: ex.name + ' — Left' });
-        exs.push({ ...ex, phase, sectionName: s.name, restAfter: 0, side: 'Right', displayName: ex.name + ' — Right' });
-      } else {
-        exs.push({ ...ex, phase, sectionName: s.name, restAfter: restSec, displayName: ex.name });
-      }
-    });
-  });
-  return exs;
-}
-
 // ── Speech helper ─────────────────────────────────────────────────────────────
 function safeSpeak(text: string) {
-  try {
-    Speech.stop();
-    Speech.speak(text, { language: 'en-US', pitch: 1.0, rate: 0.88 });
-  } catch {}
+  speak(text);
 }
 
 function announceExercise(ex: any) {
-  let text = ex.displayName || ex.name;
-  if (ex.side) text = ex.name + ', ' + ex.side + ' side';
-  if (ex.type === 'sets' && ex.sets && ex.reps) {
-    const w = ex.weight > 0 ? `, ${ex.weight} pounds` : ', bodyweight';
-    text += `. ${ex.sets} sets of ${ex.reps} reps${w}.`;
-  } else if (ex.type === 'time' && ex.duration) {
-    const m = Math.floor(ex.duration / 60);
-    const s = ex.duration % 60;
-    if (m > 0 && s > 0) text += `. ${m} minute${m > 1 ? 's' : ''} ${s} seconds.`;
-    else if (m > 0) text += `. ${m} minute${m > 1 ? 's' : ''}.`;
-    else text += `. ${s} seconds.`;
-  }
-  safeSpeak(text);
+  safeSpeak(buildExerciseAnnouncementText(ex));
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -186,9 +70,12 @@ export default function WorkoutPlayerScreen() {
   const workout = useMemo(() => {
     for (const week of workoutData.weeks) {
       const found = (week.workouts as any[]).find((w: any) => w.id === workoutId);
-      if (found) return found;
+      // Weeks 3+ mostly reference a week-1/2 workout via inheritFrom and carry
+      // no `sections` of their own — resolveWorkout merges the base sections
+      // with this workout's progressionOverrides before we ever flatten them.
+      if (found) return resolveWorkout(found);
     }
-    return workoutData.weeks[0].workouts[0];
+    return resolveWorkout(workoutData.weeks[0].workouts[0]);
   }, [workoutId]);
 
   useEffect(() => {
@@ -201,7 +88,7 @@ export default function WorkoutPlayerScreen() {
       clearInterval(sessionRef.current);
       clearInterval(timerRef.current);
       clearTimeout(autoAdvanceRef.current);
-      Speech.stop();
+      stopSpeech();
     };
   }, [workout]);
 
@@ -256,6 +143,7 @@ export default function WorkoutPlayerScreen() {
         clearInterval(cd);
         setCountdown(null);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        playBell();
         onDone();
       }
     }, 1000);
@@ -385,35 +273,38 @@ export default function WorkoutPlayerScreen() {
     }
   }
 
-  function goNext() {
+  // After a set is completed (or skipped), rest and progression happen on
+  // their own — no separate "Next/Rest" tap needed.
+  function progressAfterSetChange(updatedEntries: any[]) {
+    const ex = currentEx;
+    const completedSets = updatedEntries.filter((e: any) => e.completed).length;
+    if (completedSets >= updatedEntries.length) {
+      advanceExercise();
+    } else if (ex?.restAfter > 0) {
+      startRestTimer(ex.restAfter, () => {
+        safeSpeak('Next set.');
+        setTimerMode('exercise');
+      });
+    }
+  }
+
+  function skipExercise() {
     clearInterval(timerRef.current);
+    clearTimeout(autoAdvanceRef.current);
     setTimerRunning(false);
     setCountdown(null);
-    Speech.stop();
+    stopSpeech();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    advanceExercise();
+  }
 
-    const ex = currentEx;
-    if (!ex) return;
-
-    if (ex.type === 'sets' && ex.restAfter > 0) {
-      const entries = allSetLogs[exIdx] || [];
-      const completedSets = entries.filter((e: any) => e.completed).length;
-      const totalSets = entries.length;
-      const isLastSet = completedSets >= totalSets;
-
-      if (isLastSet) {
-        // All sets done — move to next exercise
-        advanceExercise();
-      } else {
-        // More sets remain — rest then return to same exercise
-        startRestTimer(ex.restAfter, () => {
-          // Stay on same exercise, just announce it again
-          safeSpeak('Next set.');
-          setTimerMode('exercise');
-        });
-      }
-    } else {
-      advanceExercise();
-    }
+  function skipSet(idx: number) {
+    const entries = allSetLogs[exIdx] || [];
+    if (entries[idx]?.completed) return;
+    const updated = entries.map((e: any, i: number) => i === idx ? { ...e, completed: true, skipped: true } : e);
+    setAllSetLogs(prev => ({ ...prev, [exIdx]: updated }));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    progressAfterSetChange(updated);
   }
 
   function skipRest() {
@@ -449,12 +340,14 @@ export default function WorkoutPlayerScreen() {
 
   function toggleSetComplete(idx: number) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setAllSetLogs(prev => ({
-      ...prev,
-      [exIdx]: (prev[exIdx] || []).map((e: any, i: number) =>
-        i === idx ? { ...e, completed: !e.completed } : e
-      )
-    }));
+    const entries = allSetLogs[exIdx] || [];
+    const wasCompleted = !!entries[idx]?.completed;
+    const updated = entries.map((e: any, i: number) =>
+      i === idx ? { ...e, completed: !e.completed } : e
+    );
+    setAllSetLogs(prev => ({ ...prev, [exIdx]: updated }));
+    // Only auto-progress on the completing tap, not on un-checking a set.
+    if (!wasCompleted) progressAfterSetChange(updated);
   }
 
   function doSwap(sub: any) {
@@ -536,6 +429,7 @@ export default function WorkoutPlayerScreen() {
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => setView('list')}><Text style={s.backBtn}>≡  All Exercises</Text></TouchableOpacity>
+        <TouchableOpacity onPress={skipExercise}><Text style={s.skipExerciseBtn}>Skip ▶</Text></TouchableOpacity>
         <Text style={s.elapsedText}>{elapsedStr}</Text>
       </View>
       <View style={s.progressWrap}>
@@ -584,37 +478,23 @@ export default function WorkoutPlayerScreen() {
               {isResting ? 'REST' : (intDef ? (intervalIsWork ? 'WORK' : 'REST') : 'remaining')}
             </Text>
 
-            {isResting ? (
-        <View style={s.controls}>
-          <TouchableOpacity style={[s.nextBtn, { backgroundColor: C.rest, flex: 1 }]} onPress={skipRest}>
-            <Text style={s.nextBtnText}>Skip Rest ▶</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
+            {!isResting && (
               <TouchableOpacity style={[s.timerBtn, { backgroundColor: phaseColor }]} onPress={toggleTimer}>
                 <Text style={s.timerBtnText}>{timerRunning ? '⏸  Pause' : '▶  Start'}</Text>
               </TouchableOpacity>
             )}
 
             {isResting && (
-              <View style={{ alignItems: 'center', gap: 12, marginTop: 8 }}>
-                <Text style={s.restLabel}>
-                  {(() => {
-                    const entries = allSetLogs[exIdx] || [];
-                    const done = entries.filter((e: any) => e.completed).length;
-                    const total = entries.length;
-                    return done >= total
-                      ? `Next: ${exerciseList[exIdx + 1]?.displayName || exerciseList[exIdx + 1]?.name || 'Done'}`
-                      : `Set ${done + 1} of ${total} up next`;
-                  })()}
-                </Text>
-                <TouchableOpacity
-                  style={[s.timerBtn, { backgroundColor: C.rest, paddingHorizontal: 32, marginTop: 4 }]}
-                  onPress={skipRest}
-                >
-                  <Text style={s.timerBtnText}>Skip Rest ▶</Text>
-                </TouchableOpacity>
-              </View>
+              <Text style={s.restLabel}>
+                {(() => {
+                  const entries = allSetLogs[exIdx] || [];
+                  const done = entries.filter((e: any) => e.completed).length;
+                  const total = entries.length;
+                  return done >= total
+                    ? `Next: ${exerciseList[exIdx + 1]?.displayName || exerciseList[exIdx + 1]?.name || 'Done'}`
+                    : `Set ${done + 1} of ${total} up next`;
+                })()}
+              </Text>
             )}
           </View>
         ) : (
@@ -631,17 +511,19 @@ export default function WorkoutPlayerScreen() {
             </View>
             {setEntries.map((entry: any, i: number) => (
               <View key={i} style={[s.setRow, entry.completed && s.setRowDone]}>
-                <Text style={[s.setLabel, { flex: 1.6 }]}>{entry.label}</Text>
+                <Text style={[s.setLabel, { flex: 1.6 }]}>{entry.label}{entry.skipped ? ' (skipped)' : ''}</Text>
                 <TextInput
                   style={[s.setInput, { flex: 1 }]}
-                  value={String(entry.reps)}
+                  value={entry.skipped ? '—' : String(entry.reps)}
+                  editable={!entry.skipped}
                   onChangeText={v => updateSetEntry(i, 'reps', parseInt(v) || 0)}
                   keyboardType="number-pad"
                   selectTextOnFocus
                 />
                 <TextInput
                   style={[s.setInput, { flex: 1, marginLeft: 8 }]}
-                  value={entry.weight > 0 ? String(entry.weight) : ''}
+                  value={entry.skipped ? '—' : (entry.weight > 0 ? String(entry.weight) : '')}
+                  editable={!entry.skipped}
                   placeholder="BW"
                   placeholderTextColor={C.textDim}
                   onChangeText={v => updateSetEntry(i, 'weight', parseInt(v) || 0)}
@@ -649,17 +531,26 @@ export default function WorkoutPlayerScreen() {
                   selectTextOnFocus
                 />
                 <TouchableOpacity
-                  style={[s.setCheckBtn, { width: 44 }, entry.completed && { backgroundColor: C.success, borderColor: C.success }]}
+                  style={[s.setCheckBtn, { width: 44 }, entry.completed && { backgroundColor: entry.skipped ? C.textDim : C.success, borderColor: entry.skipped ? C.textDim : C.success }]}
                   onPress={() => toggleSetComplete(i)}
                 >
                   <Text style={[s.setCheckText, entry.completed && { color: C.bg }]}>{entry.completed ? '✓' : '○'}</Text>
                 </TouchableOpacity>
               </View>
             ))}
+            {/* Skip the next set that hasn't been done yet */}
+            {setEntries.some((e: any) => !e.completed) && (
+              <TouchableOpacity
+                style={s.skipSetLink}
+                onPress={() => skipSet(setEntries.findIndex((e: any) => !e.completed))}
+              >
+                <Text style={s.skipSetLinkText}>Skip this set ▶</Text>
+              </TouchableOpacity>
+            )}
             {/* Rest indicator */}
             {currentEx.restAfter > 0 && (
               <View style={s.restHint}>
-                <Text style={s.restHintText}>Rest between sets: {currentEx.restAfter}s — tap Next to start rest timer</Text>
+                <Text style={s.restHintText}>Rest between sets: {currentEx.restAfter}s — starts automatically when you check off a set</Text>
               </View>
             )}
           </View>
@@ -676,11 +567,8 @@ export default function WorkoutPlayerScreen() {
         </View>
       ) : (
         <View style={s.controls}>
-          <TouchableOpacity style={s.swapBtn} onPress={() => setShowSwap(true)}>
+          <TouchableOpacity style={[s.swapBtn, { flex: 1 }]} onPress={() => setShowSwap(true)}>
             <Text style={s.swapBtnText}>⟳  Swap</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[s.nextBtn, { backgroundColor: phaseColor }]} onPress={goNext}>
-            <Text style={s.nextBtnText}>{exIdx >= exerciseList.length - 1 ? 'Finish ✓' : currentEx.restAfter > 0 && currentEx.type === 'sets' ? 'Rest ▶' : 'Next ▶'}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -716,6 +604,7 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
   backBtn: { fontSize: 14, color: C.textMid, fontWeight: '500' },
+  skipExerciseBtn: { fontSize: 13, color: C.textMid, fontWeight: '600' },
   headerTitle: { fontSize: 15, fontWeight: '600', color: C.text, flex: 1, textAlign: 'center', marginHorizontal: 8 },
   elapsedText: { fontSize: 13, color: C.textDim, minWidth: 40, textAlign: 'right' },
   progressWrap: { height: 3, backgroundColor: C.elevated, marginHorizontal: 16 },
@@ -759,6 +648,8 @@ const s = StyleSheet.create({
   setCheckText: { fontSize: 16, color: C.textDim },
   restHint: { marginTop: 10, padding: 10, backgroundColor: C.rest + '15', borderRadius: 8, borderWidth: 1, borderColor: C.rest + '33' },
   restHintText: { fontSize: 12, color: C.rest },
+  skipSetLink: { alignItems: 'center', paddingVertical: 10, marginTop: 4 },
+  skipSetLinkText: { fontSize: 13, color: C.textMid, fontWeight: '600' },
   controls: { flexDirection: 'row', gap: 10, padding: 16, borderTopWidth: 1, borderTopColor: C.elevated },
   swapBtn: { flex: 1, padding: 14, borderRadius: 10, borderWidth: 1, borderColor: C.borderLight, alignItems: 'center' },
   swapBtnText: { fontSize: 14, color: C.textMid, fontWeight: '600' },

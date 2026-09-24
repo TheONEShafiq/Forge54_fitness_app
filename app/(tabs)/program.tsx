@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, spacing, radius } from '../../src/theme';
-import { resolveAllWorkouts } from '../../src/utils/workoutResolver';
-import workoutData from '../../workouts.json';
+import { resolveAllWorkouts, getActiveWeeks } from '../../src/utils/workoutResolver';
+import { getProgramLength, ProgramLength } from '../../src/store/settingsStore';
 
 const PHASE_COLORS: Record<string, string> = {
   foundation: '#3b82f6', load: '#f97316', peak: '#ef4444', deload: '#a78bfa',
@@ -18,16 +18,25 @@ const TYPE_BADGES: Record<string, { label: string; color: string }> = {
 export default function ProgramScreen() {
   const router = useRouter();
   const [expandedWeek, setExpandedWeek] = useState<number>(1);
-  const allResolved = resolveAllWorkouts();
+  const [programLength, setProgramLength] = useState<ProgramLength>(6);
+
+  useFocusEffect(
+    useCallback(() => {
+      getProgramLength().then(setProgramLength);
+    }, [])
+  );
+
+  const allResolved = resolveAllWorkouts(programLength);
+  const activeWeeks = getActiveWeeks(programLength);
 
   return (
     <SafeAreaView style={s.container}>
       <View style={s.header}>
-        <Text style={s.title}>Forge54 Program</Text>
-        <Text style={s.subtitle}>6 weeks · 5 days/week · 30 workouts</Text>
+        <Text style={s.title}>Forge Program</Text>
+        <Text style={s.subtitle}>{programLength} weeks · 5 days/week · {allResolved.length} workouts</Text>
       </View>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: spacing.md }}>
-        {(workoutData as any).weeks.map((week: any) => {
+        {activeWeeks.map((week: any) => {
           const isExpanded = expandedWeek === week.week;
           const phaseColor = PHASE_COLORS[week.phase] || colors.textMuted;
           const weekWorkouts = allResolved.filter((w: any) => w.weekNumber === week.week);

@@ -30,8 +30,9 @@ export function resolveWorkout(wo: any): any {
   };
 }
 
-export function resolveAllWorkouts(): any[] {
-  return (workoutData as any).weeks.flatMap((w: any) =>
+export function resolveAllWorkouts(maxWeek?: number): any[] {
+  const weeks = maxWeek ? getActiveWeeks(maxWeek) : (workoutData as any).weeks;
+  return weeks.flatMap((w: any) =>
     w.workouts.map((wo: any) => ({
       ...resolveWorkout(wo),
       weekNumber: w.week,
@@ -40,6 +41,12 @@ export function resolveAllWorkouts(): any[] {
       weekProgressionNote: w.progressionNote || null,
     }))
   );
+}
+
+// The program author writes a full 6-week block; the athlete can choose to
+// run a shorter 4- or 5-week cycle instead (see settingsStore.programLength).
+export function getActiveWeeks(maxWeek: number = 6): any[] {
+  return (workoutData as any).weeks.filter((w: any) => w.week <= maxWeek);
 }
 
 export function getWorkoutById(id: string): any | null {

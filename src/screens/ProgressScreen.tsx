@@ -3,9 +3,10 @@
  * Four tabs: Weekly / Monthly / Exercises / Garmin
  */
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert } from 'react-native';
 import { colors, spacing, radius } from '../theme';
-import { getWeeklyStats, getMonthlyStats, getExerciseProgression } from '../store/workoutStore';
+import { getWeeklyStats, getMonthlyStats, getExerciseProgression, getGarminToken } from '../store/workoutStore';
+import { connectGarminAccount, getGarminClientId } from '../utils/garminSync';
 
 const TRACKED_EXERCISES = ['KB Swing', 'KB Deadlift', 'Sandbag Clean to Shoulder', 'TRX Row'];
 const TABS = ['Weekly', 'Monthly', 'Exercises', 'Garmin'];
@@ -15,10 +16,13 @@ export default function ProgressScreen() {
   const [weekStats, setWeekStats] = useState<any>(null);
   const [monthStats, setMonthStats] = useState<any>(null);
   const [exProgress, setExProgress] = useState<Record<string, any[]>>({});
+  const [garminConnected, setGarminConnected] = useState(false);
+  const [garminConnecting, setGarminConnecting] = useState(false);
 
   useEffect(() => {
     getWeeklyStats().then(setWeekStats);
     getMonthlyStats().then(setMonthStats);
+    getGarminToken().then(token => setGarminConnected(!!token));
     Promise.all(TRACKED_EXERCISES.map(async name => ({
       name,
       data: await getExerciseProgression(name)
@@ -41,6 +45,27 @@ export default function ProgressScreen() {
     { mo: 'Mar', vol: 48000 }, { mo: 'Apr', vol: 52000 }, { mo: 'May', vol: 54000 },
   ];
   const maxMo = Math.max(...monthlyBars.map(b => b.vol));
+
+  async function handleConnectGarmin() {
+    const clientId = await getGarminClientId();
+    if (!clientId) {
+      Alert.alert(
+        'Garmin not set up yet',
+        'Add your Garmin Client ID in Settings first (once your Garmin Developer Program application is approved).'
+      );
+      return;
+    }
+    setGarminConnecting(true);
+    try {
+      const ok = await connectGarminAccount();
+      setGarminConnected(ok);
+      if (!ok) Alert.alert('Connection cancelled', 'Garmin authorization did not complete.');
+    } catch (e: any) {
+      Alert.alert('Garmin connection failed', e?.message || 'Something went wrong.');
+    } finally {
+      setGarminConnecting(false);
+    }
+  }
 
   const demoExProgress = [
     { name: 'KB Swing', unit: 'lbs', data: [35, 35, 40, 40, 45, 50], weeks: ['W1','W2','W3','W4','W5','W6'] },
@@ -179,10 +204,20 @@ export default function ProgressScreen() {
                 ))}
               </View>
             </View>
-            <TouchableOpacity style={styles.connectBtn}>
-              <Text style={styles.connectBtnText}>⟳  Connect Garmin Account</Text>
+            <TouchableOpacity
+              style={[styles.connectBtn, garminConnected && styles.connectBtnConnected]}
+              onPress={handleConnectGarmin}
+              disabled={garminConnecting}
+            >
+              <Text style={styles.connectBtnText}>
+                {garminConnecting ? 'Connecting…' : garminConnected ? '✓  Garmin Connected' : '⟳  Connect Garmin Account'}
+              </Text>
             </TouchableOpacity>
-            <Text style={styles.garminNote}>Auto-syncs via Garmin Connect API after each workout</Text>
+            <Text style={styles.garminNote}>
+              {garminConnected
+                ? 'Auto-syncs via Garmin Connect API after each workout'
+                : 'Requires an approved Garmin Developer Program application — see Settings'}
+            </Text>
           </View>
         )}
 
@@ -229,6 +264,7 @@ const styles = StyleSheet.create({
   hrZone: { alignItems: 'center', justifyContent: 'center' },
   hrZoneLabel: { fontSize: 9, color: '#fff', fontWeight: '700' },
   connectBtn: { marginTop: 12, padding: 14, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
+  connectBtnConnected: { borderColor: colors.success, backgroundColor: colors.success + '15' },
   connectBtnText: { fontSize: 14, color: colors.textMuted, fontWeight: '500' },
   garminNote: { fontSize: 11, color: colors.textDim, textAlign: 'center', marginTop: 8 },
 });

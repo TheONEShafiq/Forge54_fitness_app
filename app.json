@@ -1,8 +1,9 @@
 {
   "expo": {
-    "name": "forge54",
+    "name": "Forge",
     "slug": "forge54",
     "version": "1.0.0",
+    "scheme": "forge54",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -11,13 +12,15 @@
       "bundleIdentifier": "com.sjadallah.forge54",
       "newArchEnabled": true,
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIFileSharingEnabled": true,
+        "LSSupportsOpeningDocumentsInPlace": true
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0a0806"
       },
       "newArchEnabled": true
     },
@@ -32,7 +35,9 @@
     "plugins": [
       "expo-secure-store",
       "expo-status-bar",
-      "expo-router"
+      "expo-router",
+      "expo-audio",
+      "expo-web-browser"
     ]
   }
 }

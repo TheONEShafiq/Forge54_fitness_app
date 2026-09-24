@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, spacing, radius } from '../../src/theme';
-import { resolveAllWorkouts } from '../../src/utils/workoutResolver';
-import workoutData from '../../workouts.json';
+import { resolveAllWorkouts, getActiveWeeks } from '../../src/utils/workoutResolver';
+import { getProgramLength, ProgramLength } from '../../src/store/settingsStore';
 
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
@@ -32,8 +32,16 @@ function fmtDuration(d: any): string {
 export default function HomeScreen() {
   const router = useRouter();
   const [expandedWeek, setExpandedWeek] = useState<number>(1);
+  const [programLength, setProgramLength] = useState<ProgramLength>(6);
 
-  const allWorkouts = resolveAllWorkouts();
+  useFocusEffect(
+    useCallback(() => {
+      getProgramLength().then(setProgramLength);
+    }, [])
+  );
+
+  const allWorkouts = resolveAllWorkouts(programLength);
+  const activeWeeks = getActiveWeeks(programLength);
   const todayName = DAY_NAMES[new Date().getDay()];
   const todayWorkout = allWorkouts.find(
     (w: any) => w.day?.toLowerCase() === todayName.toLowerCase()
@@ -46,7 +54,7 @@ export default function HomeScreen() {
         {/* Header */}
         <View style={s.headerRow}>
           <View>
-            <Text style={s.greeting}>Forge54</Text>
+            <Text style={s.greeting}>Forge</Text>
             <Text style={s.date}>
               {new Date().toLocaleDateString('en-US', {
                 weekday: 'long', month: 'short', day: 'numeric',
@@ -93,7 +101,7 @@ export default function HomeScreen() {
 
         {/* Program strip */}
         <Text style={s.sectionTitle}>Program</Text>
-        {(workoutData as any).weeks.map((week: any) => {
+        {activeWeeks.map((week: any) => {
           const isExpanded = expandedWeek === week.week;
           const phaseColor = PHASE_COLORS[week.phase] || colors.textMuted;
           const weekWorkouts = allWorkouts.filter((w: any) => w.weekNumber === week.week);

@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import type { ColorValue } from 'react-native';
 import { colors } from '../../src/theme';
 
 export default function TabLayout() {
@@ -13,11 +14,12 @@ export default function TabLayout() {
       <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: ({ color }) => <TabIcon label="⌂" color={color} /> }} />
       <Tabs.Screen name="program" options={{ title: 'Program', tabBarIcon: ({ color }) => <TabIcon label="◫" color={color} /> }} />
       <Tabs.Screen name="progress" options={{ title: 'Progress', tabBarIcon: ({ color }) => <TabIcon label="↗" color={color} /> }} />
+      <Tabs.Screen name="settings" options={{ title: 'Settings', tabBarIcon: ({ color }) => <TabIcon label="⚙" color={color} /> }} />
     </Tabs>
   );
 }
 
-function TabIcon({ label, color }: { label: string; color: string }) {
+function TabIcon({ label, color }: { label: string; color: ColorValue }) {
   const { Text } = require('react-native');
   return <Text style={{ fontSize: 18, color }}>{label}</Text>;
 }
