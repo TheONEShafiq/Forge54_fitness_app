@@ -8,7 +8,7 @@ import { saveWorkoutLog, isPerformed } from '../store/workoutStore';
 import type { WorkoutLog, ExerciseLog } from '../store/workoutStore';
 import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { speak, stopSpeech, playBell } from '../utils/ttsService';
+import { speak, stopSpeech, playBell, speakCue, preloadCues, releaseCues } from '../utils/ttsService';
 import {
   INTERVAL_MAP, SUBS, getSubs,
   flattenExercises, buildExerciseAnnouncementText,
@@ -39,6 +39,7 @@ function announceExercise(ex: any) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 type TimerMode = 'exercise' | 'rest' | 'interval_work' | 'interval_rest' | 'countdown';
+const COUNTDOWN_CUES = ['3', '2', '1'];
 
 export default function WorkoutPlayerScreen() {
   const { workoutId } = useLocalSearchParams<{ workoutId: string }>();
@@ -69,9 +70,9 @@ export default function WorkoutPlayerScreen() {
   // Which of `sides` a timed unilateral exercise is on.
   const [sideIdx, setSideIdx] = useState(0);
 
-  const timerRef = useRef<any>(null);
+  const tickRef = useRef<any>(null);
+  const phaseRef = useRef<{ deadline: number; onDone: () => void; shown: number; pausedMsLeft: number | null } | null>(null);
   const sessionRef = useRef<any>(null);
-  const autoAdvanceRef = useRef<any>(null);
   const startedAtRef = useRef(new Date().toISOString());
   // Set once the session has been saved or discarded, so the beforeRemove
   // guard lets the navigation through.
@@ -93,12 +94,15 @@ export default function WorkoutPlayerScreen() {
     const exs = flattenExercises(workout);
     setExerciseList(exs);
     activateKeepAwakeAsync();
+    // Load the 3-2-1 clips up front so the first digit doesn't pay player start-up cost.
+    preloadCues(COUNTDOWN_CUES);
     sessionRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
     return () => {
       deactivateKeepAwake();
       clearInterval(sessionRef.current);
-      clearInterval(timerRef.current);
-      clearTimeout(autoAdvanceRef.current);
+      clearTimeout(tickRef.current);
+      phaseRef.current = null;
+      releaseCues();
       stopSpeech();
     };
   }, [workout]);
@@ -107,10 +111,8 @@ export default function WorkoutPlayerScreen() {
   useEffect(() => {
     const ex = exerciseList[exIdx];
     if (!ex) return;
-    clearInterval(timerRef.current);
-    clearTimeout(autoAdvanceRef.current);
+    stopPhase();
     setTimerRunning(false);
-    setCountdown(null);
     setIntervalRound(1);
     setIntervalIsWork(true);
     setTimerMode('exercise');
@@ -156,41 +158,73 @@ export default function WorkoutPlayerScreen() {
   const intDef = currentEx ? INTERVAL_MAP[currentEx.name] : null;
 
   // ── Timer engine ─────────────────────────────────────────────────────────────
-  function startCountdownThen(onDone: () => void) {
-    let c = 3;
-    setCountdown(c);
-    safeSpeak('3');
-    const cd = setInterval(() => {
-      c--;
-      if (c > 0) { setCountdown(c); safeSpeak(String(c)); }
-      else {
-        clearInterval(cd);
+  // One phase runs at a time (work, rest, interval, countdown). Remaining time is
+  // derived from a wall-clock deadline and each tick is scheduled for the next
+  // whole-second boundary, so ticks never drift or bunch up. The last 3 seconds
+  // of every phase are the spoken 3-2-1 countdown. Side effects happen here,
+  // never inside state updaters.
+  function scheduleTick() {
+    const p = phaseRef.current;
+    if (!p) return;
+    const msLeft = p.deadline - Date.now();
+    const sec = Math.max(0, Math.ceil(msLeft / 1000));
+    if (sec !== p.shown) {
+      p.shown = sec;
+      if (sec === 0) {
+        phaseRef.current = null;
+        tickRef.current = null;
+        setTimerRunning(false);
         setCountdown(null);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         playBell();
-        onDone();
+        p.onDone();
+        return;
       }
-    }, 1000);
-    timerRef.current = cd;
+      setTimerValue(sec);
+      if (sec <= 3) { setCountdown(sec); speakCue(String(sec)); }
+      else setCountdown(null);
+    }
+    // Wake just after the next boundary (when `sec` drops by one).
+    const untilNext = msLeft - (sec - 1) * 1000;
+    tickRef.current = setTimeout(scheduleTick, Math.max(untilNext, 0) + 5);
+  }
+
+  function startPhase(seconds: number, mode: TimerMode, onDone: () => void) {
+    stopPhase();
+    phaseRef.current = { deadline: Date.now() + seconds * 1000, onDone, shown: -1, pausedMsLeft: null };
+    setTimerMode(mode);
+    setTimerRunning(true);
+    scheduleTick();
+  }
+
+  function stopPhase() {
+    clearTimeout(tickRef.current);
+    tickRef.current = null;
+    phaseRef.current = null;
+    setCountdown(null);
+  }
+
+  function pausePhase() {
+    const p = phaseRef.current;
+    if (!p || p.pausedMsLeft !== null) return;
+    clearTimeout(tickRef.current);
+    tickRef.current = null;
+    p.pausedMsLeft = Math.max(0, p.deadline - Date.now());
+    setTimerRunning(false);
+  }
+
+  function resumePhase() {
+    const p = phaseRef.current;
+    if (!p || p.pausedMsLeft === null) return;
+    p.deadline = Date.now() + p.pausedMsLeft;
+    p.pausedMsLeft = null;
+    setTimerRunning(true);
+    scheduleTick();
   }
 
   function startRestTimer(seconds: number, onDone: () => void) {
-    setTimerMode('rest');
-    setTimerValue(seconds);
-    setTimerRunning(true);
     safeSpeak(`Rest. ${seconds} seconds.`);
-    timerRef.current = setInterval(() => {
-      setTimerValue(v => {
-        if (v <= 4 && v > 1) { }
-        if (v <= 1) {
-          clearInterval(timerRef.current);
-          setTimerRunning(false);
-          startCountdownThen(onDone);
-          return 0;
-        }
-        return v - 1;
-      });
-    }, 1000);
+    startPhase(seconds, 'rest', onDone);
   }
 
   function sideDuration(ex: any, side: number): number {
@@ -203,104 +237,53 @@ export default function WorkoutPlayerScreen() {
 
     if (intDef) {
       // Interval / Tabata mode
-      setTimerMode('interval_work');
-      setTimerValue(intDef.workSec);
-      setTimerRunning(true);
       safeSpeak(`Interval 1 of ${intDef.rounds}. ${intDef.workLabel}.`);
-      runIntervalTick(intDef, 1, true);
-    } else {
-      // Simple timed exercise
-      setTimerMode('exercise');
-      setTimerValue(sideDuration(ex, side));
-      setTimerRunning(true);
-      timerRef.current = setInterval(() => {
-        setTimerValue(v => {
-          if (v === 4) {
-            clearInterval(timerRef.current);
-            setTimerRunning(false);
-            startCountdownThen(() => {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              // Unilateral holds run the next side straight away — no rest between sides.
-              if (ex.sides && side < ex.sides.length - 1) {
-                setSideIdx(side + 1);
-                safeSpeak('Switch sides.');
-                startExerciseTimer(side + 1);
-                return;
-              }
-              // Auto-advance to rest or next exercise
-              const restSec = ex.restAfter || 0;
-              if (restSec > 0) {
-                startRestTimer(restSec, () => advanceExercise());
-              } else {
-                advanceExercise();
-              }
-            });
-            return 3;
-          }
-          return v - 1;
-        });
-      }, 1000);
+      runInterval(intDef, 1, true);
+      return;
     }
+    startPhase(sideDuration(ex, side), 'exercise', () => {
+      // Unilateral holds run the next side straight away — no rest between sides.
+      if (ex.sides && side < ex.sides.length - 1) {
+        setSideIdx(side + 1);
+        safeSpeak('Switch sides.');
+        startExerciseTimer(side + 1);
+        return;
+      }
+      const restSec = ex.restAfter || 0;
+      if (restSec > 0) startRestTimer(restSec, () => advanceExercise());
+      else advanceExercise();
+    });
   }
 
-  function runIntervalTick(def: IntervalDef, round: number, isWork: boolean) {
-    clearInterval(timerRef.current);
-    const duration = isWork ? def.workSec : def.restSec;
+  function runInterval(def: IntervalDef, round: number, isWork: boolean) {
     setIntervalRound(round);
     setIntervalIsWork(isWork);
-    setTimerMode(isWork ? 'interval_work' : 'interval_rest');
-    setTimerValue(duration);
-    setTimerRunning(true);
-
-    timerRef.current = setInterval(() => {
-      setTimerValue(v => {
-        if (v === 4) {
-          clearInterval(timerRef.current);
-          setTimerRunning(false);
-          startCountdownThen(() => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            const nextIsWork = !isWork;
-            const nextRound = nextIsWork ? round : round + 1;
-            if (!isWork && round >= def.rounds) {
-              // All intervals done
-              safeSpeak('All intervals complete. Great work.');
-              const restSec = currentEx?.restAfter || 0;
-              if (restSec > 0) startRestTimer(restSec, () => advanceExercise());
-              else advanceExercise();
-              return 0;
-            }
-            const label = nextIsWork ? def.workLabel : def.restLabel;
-            const announcement = nextIsWork
-              ? `Interval ${nextRound} of ${def.rounds}. ${label}.`
-              : `Rest. ${label}.`;
-            safeSpeak(announcement);
-            runIntervalTick(def, nextIsWork ? nextRound : round, nextIsWork);
-          });
-          return 3;
-        }
-        return v - 1;
-      });
-    }, 1000);
+    startPhase(isWork ? def.workSec : def.restSec, isWork ? 'interval_work' : 'interval_rest', () => {
+      if (!isWork && round >= def.rounds) {
+        safeSpeak('All intervals complete. Great work.');
+        const restSec = currentEx?.restAfter || 0;
+        if (restSec > 0) startRestTimer(restSec, () => advanceExercise());
+        else advanceExercise();
+        return;
+      }
+      const nextIsWork = !isWork;
+      const nextRound = nextIsWork ? round + 1 : round;
+      safeSpeak(nextIsWork
+        ? `Interval ${nextRound} of ${def.rounds}. ${def.workLabel}.`
+        : `Rest. ${def.restLabel}.`);
+      runInterval(def, nextRound, nextIsWork);
+    });
   }
 
   function toggleTimer() {
-    if (timerRunning) {
-      clearInterval(timerRef.current);
-      setTimerRunning(false);
-    } else {
-      if (timerMode === 'rest') {
-        // Resume rest timer
-        startRestTimer(timerValue, () => advanceExercise());
-      } else {
-        startExerciseTimer();
-      }
-    }
+    if (timerRunning) pausePhase();
+    else if (phaseRef.current) resumePhase();
+    else startExerciseTimer();
   }
 
   function advanceExercise(outcome: 'done' | 'skipped' = 'done') {
-    clearInterval(timerRef.current);
+    stopPhase();
     setTimerRunning(false);
-    setCountdown(null);
     const { exIdx: idx, exerciseList: list } = liveRef.current;
     const outcomes = { ...liveRef.current.exerciseOutcome, [idx]: outcome };
     liveRef.current.exerciseOutcome = outcomes;
@@ -333,10 +316,8 @@ export default function WorkoutPlayerScreen() {
   }
 
   function skipExercise() {
-    clearInterval(timerRef.current);
-    clearTimeout(autoAdvanceRef.current);
+    stopPhase();
     setTimerRunning(false);
-    setCountdown(null);
     stopSpeech();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     advanceExercise('skipped');
@@ -352,10 +333,9 @@ export default function WorkoutPlayerScreen() {
   }
 
   function skipRest() {
-    clearInterval(timerRef.current);
+    stopPhase();
     setTimerRunning(false);
     setTimerMode('exercise');
-    setCountdown(null);
     safeSpeak('Skipping rest.');
     const ex = currentEx;
     if (!ex) return;
