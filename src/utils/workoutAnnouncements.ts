@@ -120,17 +120,57 @@ export const SUBS: Record<string, any[]> = {
 export function getSubs(name: string) { return SUBS[name] || SUBS['default']; }
 
 // ── Flatten ───────────────────────────────────────────────────────────────────
+// Circuit sections (`circuitRounds`, or `tabata` where every exercise has the
+// same round count) are expanded into round order: A, B, C → rest → A, B, C.
+// Tabata sections whose exercises have different counts ("Russian Twist x4 +
+// Side Plank x2") are blocks instead; `"circuit": false` on a section forces
+// that. Timed exercises outside circuits repeat once per set. Rep exercises
+// outside circuits are unchanged — their sets are rows in the set logger.
+function isCircuit(s: any, exercises: any[]): boolean {
+  if (s.circuit === false) return false;
+  if (s.circuitRounds) return true;
+  if (!s.tabata || exercises.length < 2) return false;
+  const counts = exercises.map(e => e.sets || 1);
+  return counts[0] > 1 && counts.every(c => c === counts[0]);
+}
+
 export function flattenExercises(workout: any) {
   const exs: any[] = [];
   workout.sections.forEach((s: any) => {
     const phase = s.name.toLowerCase().includes('warm') ? 'warmup' :
                   s.name.toLowerCase().includes('cool') ? 'cooldown' : 'work';
     const fallbackRestSec = getRestDuration(s.name, workout.type);
-    mergeSidePairs(s.exercises).forEach((ex: any) => {
-      // Prefer the rest value the program author wrote for this exercise;
-      // only fall back to the section/type heuristic when none was given.
-      const restSec = typeof ex.rest === 'number' ? ex.rest : fallbackRestSec;
-      exs.push({ ...ex, phase, sectionName: s.name, restAfter: restSec, displayName: ex.name });
+    // Prefer the rest value the program author wrote for this exercise;
+    // only fall back to the section/type heuristic when none was given.
+    const restFor = (ex: any) => typeof ex.rest === 'number' ? ex.rest : fallbackRestSec;
+    const base = (ex: any) => ({ ...ex, phase, sectionName: s.name, displayName: ex.name });
+    const exercises = mergeSidePairs(s.exercises);
+
+    if (isCircuit(s, exercises)) {
+      const rounds = s.circuitRounds || exercises[0].sets || 1;
+      const roundRest = s.restBetweenRounds || 0;
+      for (let r = 1; r <= rounds; r++) {
+        const inRound = exercises.filter(ex => (ex.sets || rounds) >= r);
+        inRound.forEach((ex, i) => {
+          const lastInRound = i === inRound.length - 1;
+          const rest = lastInRound && r < rounds ? Math.max(restFor(ex), roundRest) : restFor(ex);
+          // One set per round. `restAfterLast` is the rest after finishing this
+          // item — rep exercises otherwise move on with no rest.
+          exs.push({ ...base(ex), sets: 1, restAfter: rest, restAfterLast: rest, roundLabel: `Round ${r} of ${rounds}` });
+        });
+      }
+      return;
+    }
+
+    exercises.forEach((ex: any) => {
+      const sets = ex.sets || 1;
+      if (ex.type === 'time' && sets > 1 && !INTERVAL_MAP[ex.name]) {
+        for (let n = 1; n <= sets; n++) {
+          exs.push({ ...base(ex), sets: 1, restAfter: restFor(ex), roundLabel: `Set ${n} of ${sets}` });
+        }
+      } else {
+        exs.push({ ...base(ex), restAfter: restFor(ex) });
+      }
     });
   });
   return exs;
@@ -142,7 +182,7 @@ export function buildExerciseAnnouncementText(ex: any): string {
   if (ex.sides) text = ex.name + ', each side';
   if (ex.type === 'sets' && ex.sets && ex.reps) {
     const w = ex.weight > 0 ? `, ${ex.weight} pounds` : ', bodyweight';
-    text += `. ${ex.sets} sets of ${ex.reps} reps${w}.`;
+    text += ex.sets === 1 ? `. ${ex.reps} reps${w}.` : `. ${ex.sets} sets of ${ex.reps} reps${w}.`;
   } else if (ex.type === 'time' && ex.duration) {
     const m = Math.floor(ex.duration / 60);
     const s = ex.duration % 60;
