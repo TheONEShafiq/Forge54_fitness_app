@@ -22,7 +22,8 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0a0806"
       },
-      "newArchEnabled": true
+      "newArchEnabled": true,
+      "package": "com.sjadallah.forge54"
     },
     "web": {
       "favicon": "./assets/favicon.png"
