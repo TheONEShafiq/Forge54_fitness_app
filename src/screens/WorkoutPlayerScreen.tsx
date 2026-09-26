@@ -3,8 +3,9 @@ import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StyleSheet, SafeAreaView, Modal, Alert
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { saveWorkoutLog } from '../store/workoutStore';
+import { useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
+import { saveWorkoutLog, isPerformed } from '../store/workoutStore';
+import type { WorkoutLog, ExerciseLog } from '../store/workoutStore';
 import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { speak, stopSpeech, playBell } from '../utils/ttsService';
@@ -48,6 +49,9 @@ export default function WorkoutPlayerScreen() {
 
   // Set logging — stores all sets for all exercises
   const [allSetLogs, setAllSetLogs] = useState<Record<number, any[]>>({});
+  // How each exercise ended; unset means it was never reached.
+  const [exerciseOutcome, setExerciseOutcome] = useState<Record<number, 'done' | 'skipped'>>({});
+  const [swappedFrom, setSwappedFrom] = useState<Record<number, string>>({});
 
   // Timer state
   const [timerValue, setTimerValue] = useState(0);
@@ -66,6 +70,11 @@ export default function WorkoutPlayerScreen() {
   const timerRef = useRef<any>(null);
   const sessionRef = useRef<any>(null);
   const autoAdvanceRef = useRef<any>(null);
+  const startedAtRef = useRef(new Date().toISOString());
+  // Set once the session has been saved or discarded, so the beforeRemove
+  // guard lets the navigation through.
+  const allowLeaveRef = useRef(false);
+  const navigation = useNavigation();
 
   const workout = useMemo(() => {
     for (const week of workoutData.weeks) {
@@ -112,7 +121,11 @@ export default function WorkoutPlayerScreen() {
         const entries = Array.from({ length: totalRows }, (_, i) => ({
           reps: ex.reps || 0,
           weight: ex.weight || 0,
+          plannedReps: ex.reps || 0,
+          plannedWeight: ex.weight || 0,
+          side: uni ? (i % 2 === 0 ? 'left' : 'right') : undefined,
           completed: false,
+          completedAt: null as string | null,
           label: uni
             ? (i % 2 === 0 ? `Set ${Math.floor(i/2)+1} — Left` : `Set ${Math.floor(i/2)+1} — Right`)
             : `Set ${i+1}`,
@@ -126,6 +139,11 @@ export default function WorkoutPlayerScreen() {
 
     setTimeout(() => announceExercise(ex), 300);
   }, [exIdx, exerciseList]);
+
+  // Timer callbacks close over the render that started them, so anything that
+  // builds the session log reads through these instead of stale state.
+  const liveRef = useRef({ exIdx, exerciseList, allSetLogs, exerciseOutcome, swappedFrom, elapsed });
+  liveRef.current = { exIdx, exerciseList, allSetLogs, exerciseOutcome, swappedFrom, elapsed };
 
   const currentEx = exerciseList[exIdx];
   const setEntries = allSetLogs[exIdx] || [];
@@ -262,11 +280,15 @@ export default function WorkoutPlayerScreen() {
     }
   }
 
-  function advanceExercise() {
+  function advanceExercise(outcome: 'done' | 'skipped' = 'done') {
     clearInterval(timerRef.current);
     setTimerRunning(false);
     setCountdown(null);
-    if (exIdx < exerciseList.length - 1) {
+    const { exIdx: idx, exerciseList: list } = liveRef.current;
+    const outcomes = { ...liveRef.current.exerciseOutcome, [idx]: outcome };
+    liveRef.current.exerciseOutcome = outcomes;
+    setExerciseOutcome(outcomes);
+    if (idx < list.length - 1) {
       setExIdx(i => i + 1);
     } else {
       handleComplete();
@@ -295,7 +317,7 @@ export default function WorkoutPlayerScreen() {
     setCountdown(null);
     stopSpeech();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    advanceExercise();
+    advanceExercise('skipped');
   }
 
   function skipSet(idx: number) {
@@ -323,11 +345,111 @@ export default function WorkoutPlayerScreen() {
     }
   }
 
+  function buildSessionLog(status: WorkoutLog['status']): WorkoutLog {
+    const { exerciseList: list, allSetLogs: sets, exerciseOutcome: outcomes, swappedFrom: swaps, elapsed: secs } = liveRef.current;
+    const exercises = list.map((ex, i): ExerciseLog => {
+      const entries = sets[i] || [];
+      const outcome = outcomes[i];
+      const setLogs = entries.map((e: any, n: number) => ({
+        setNumber: n + 1,
+        reps: e.reps,
+        weight: e.weight,
+        plannedReps: e.plannedReps ?? ex.reps ?? 0,
+        plannedWeight: e.plannedWeight ?? ex.weight ?? 0,
+        completed: !!e.completed,
+        skipped: !!e.skipped,
+        ...(e.side ? { side: e.side } : {}),
+        timestamp: e.completedAt || '',
+      }));
+      const anyPerformed = setLogs.some(isPerformed);
+      return {
+        exerciseName: ex.displayName || ex.name,
+        type: ex.type === 'sets' ? 'sets' : 'time',
+        sets: setLogs,
+        plannedSets: ex.type === 'sets' ? entries.length || (ex.sets || 0) : 0,
+        completed: ex.type === 'sets' ? anyPerformed : outcome === 'done',
+        skipped: outcome === 'skipped' || (ex.type === 'sets' && !!outcome && !anyPerformed),
+        ...(swaps[i] ? { swappedFrom: swaps[i] } : {}),
+      };
+    });
+    return {
+      schemaVersion: 2,
+      id: workout.id,
+      startedAt: startedAtRef.current,
+      completedAt: new Date().toISOString(),
+      durationMinutes: Math.round(secs / 60),
+      exercises,
+      plannedExerciseCount: list.length,
+      completedExerciseCount: exercises.filter(e => e.completed).length,
+      status,
+    };
+  }
+
+  async function finishSession(requested: 'complete' | 'partial') {
+    let log = buildSessionLog(requested);
+    // Reaching the end by skipping everything isn't a completed workout.
+    if (log.completedExerciseCount === 0) log = { ...log, status: 'skipped' };
+    const status = log.status;
+    allowLeaveRef.current = true;
+    try {
+      await saveWorkoutLog(log);
+    } catch (e) {
+      console.warn('saveWorkoutLog failed:', e);
+    }
+    const setsDone = log.exercises.reduce((n, ex) => n + ex.sets.filter(isPerformed).length, 0);
+    const setsPlanned = log.exercises.reduce((n, ex) => n + ex.plannedSets, 0);
+    const volume = log.exercises.reduce((v, ex) =>
+      v + ex.sets.filter(isPerformed).reduce((sv, st) => sv + st.reps * st.weight, 0), 0);
+    router.replace({
+      pathname: '/complete',
+      params: {
+        workoutId: workout.id,
+        status,
+        duration: String(log.durationMinutes),
+        setsDone: String(setsDone),
+        setsPlanned: String(setsPlanned),
+        exercisesDone: String(log.completedExerciseCount),
+        exercisesPlanned: String(log.plannedExerciseCount),
+        volume: String(volume),
+      },
+    });
+  }
+
   function handleComplete() {
     safeSpeak('Workout complete. Great job today.');
-    saveWorkoutLog({ id: workout.id, completedAt: new Date().toISOString(), durationMinutes: Math.round(elapsed / 60), exercises: [], status: 'complete' });
-    router.replace({ pathname: '/complete', params: { workoutId: workout.id, duration: String(Math.round(elapsed / 60)) } });
+    finishSession('complete');
   }
+
+  // Leaving mid-workout must never silently discard what was logged.
+  function confirmExit(onDiscard: () => void) {
+    const { allSetLogs: sets, exerciseOutcome: outcomes } = liveRef.current;
+    const anyProgress = Object.keys(outcomes).length > 0 ||
+      Object.values(sets).some(entries => entries.some((e: any) => e.completed));
+    if (!anyProgress) {
+      allowLeaveRef.current = true;
+      stopSpeech();
+      onDiscard();
+      return;
+    }
+    // Timers keep running under the alert so "Keep going" resumes seamlessly.
+    Alert.alert(
+      'End workout?',
+      'Save what you have done so far as a partial session, or discard it.',
+      [
+        { text: 'Keep going', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: () => { allowLeaveRef.current = true; stopSpeech(); onDiscard(); } },
+        { text: 'Save as partial', onPress: () => { stopSpeech(); finishSession('partial'); } },
+      ],
+    );
+  }
+
+  useEffect(() => {
+    return navigation.addListener('beforeRemove', (e: any) => {
+      if (allowLeaveRef.current) return;
+      e.preventDefault();
+      confirmExit(() => navigation.dispatch(e.data.action));
+    });
+  }, [navigation]);
 
   function updateSetEntry(idx: number, field: 'reps' | 'weight', value: number) {
     setAllSetLogs(prev => ({
@@ -343,7 +465,7 @@ export default function WorkoutPlayerScreen() {
     const entries = allSetLogs[exIdx] || [];
     const wasCompleted = !!entries[idx]?.completed;
     const updated = entries.map((e: any, i: number) =>
-      i === idx ? { ...e, completed: !e.completed } : e
+      i === idx ? { ...e, completed: !e.completed, completedAt: e.completed ? null : new Date().toISOString() } : e
     );
     setAllSetLogs(prev => ({ ...prev, [exIdx]: updated }));
     // Only auto-progress on the completing tap, not on un-checking a set.
@@ -351,6 +473,8 @@ export default function WorkoutPlayerScreen() {
   }
 
   function doSwap(sub: any) {
+    const original = exerciseList[exIdx];
+    setSwappedFrom(prev => ({ ...prev, [exIdx]: prev[exIdx] || original?.displayName || original?.name }));
     setExerciseList(prev => prev.map((ex, i) => i === exIdx ? { ...sub, sectionName: ex.sectionName, restAfter: ex.restAfter, displayName: sub.name } : ex));
     setAllSetLogs(prev => { const n = { ...prev }; delete n[exIdx]; return n; });
     setShowSwap(false);
@@ -371,7 +495,7 @@ export default function WorkoutPlayerScreen() {
     return (
       <SafeAreaView style={s.safe}>
         <View style={s.header}>
-          <TouchableOpacity onPress={() => router.back()}><Text style={s.backBtn}>← Back</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => router.back()}><Text style={s.backBtn}>✕  End</Text></TouchableOpacity>
           <Text style={s.headerTitle} numberOfLines={1}>{workout.title}</Text>
           <Text style={s.elapsedText}>{elapsedStr}</Text>
         </View>

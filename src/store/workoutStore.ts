@@ -1,25 +1,39 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// `reps`/`weight` are what was actually performed; `planned*` is what the
+// program prescribed. Metrics must only ever sum performed values.
 export interface SetLog {
   setNumber: number;
   reps: number;
   weight: number;
+  plannedReps: number;
+  plannedWeight: number;
   completed: boolean;
+  skipped: boolean;
+  side?: 'left' | 'right';
   timestamp: string;
 }
 
 export interface ExerciseLog {
   exerciseName: string;
+  type: 'sets' | 'time';
   sets: SetLog[];
+  plannedSets: number;
+  // Timed exercises have no set rows — this records whether the timer was run.
+  completed: boolean;
   skipped: boolean;
   swappedFrom?: string;
 }
 
 export interface WorkoutLog {
+  schemaVersion?: 2;
   id: string;
+  startedAt?: string;
   completedAt: string;
   durationMinutes: number;
   exercises: ExerciseLog[];
+  plannedExerciseCount?: number;
+  completedExerciseCount?: number;
   status: 'complete' | 'partial' | 'skipped';
   garmin?: {
     avgHR: number;
@@ -49,6 +63,17 @@ export async function getAllLogs(): Promise<Record<string, WorkoutLog>> {
   return raw ? JSON.parse(raw) : {};
 }
 
+// A set counts toward volume only if it was actually performed. `skipped` is
+// absent on pre-v2 logs, which never recorded sets anyway.
+export function isPerformed(s: SetLog): boolean {
+  return s.completed && !s.skipped;
+}
+
+export function logVolume(log: WorkoutLog): number {
+  return log.exercises.reduce((sum, ex) =>
+    sum + ex.sets.filter(isPerformed).reduce((sSum, s) => sSum + s.reps * s.weight, 0), 0);
+}
+
 export async function getLogsForWorkout(workoutId: string): Promise<WorkoutLog[]> {
   const all = await getAllLogs();
   return Object.values(all).filter(l => l.id === workoutId);
@@ -66,13 +91,12 @@ export async function getWeeklyStats(weekOffset = 0) {
     const d = new Date(l.completedAt);
     return d >= weekStart && d < weekEnd;
   });
-  const totalVolume = weekLogs.reduce((sum, log) =>
-    sum + log.exercises.reduce((eSum, ex) =>
-      eSum + ex.sets.filter(s => s.completed).reduce((sSum, s) => sSum + (s.reps * s.weight), 0), 0), 0);
+  const totalVolume = weekLogs.reduce((sum, log) => sum + logVolume(log), 0);
   const workoutsCompleted = weekLogs.filter(l => l.status === 'complete').length;
+  const workoutsPartial = weekLogs.filter(l => l.status === 'partial').length;
   const avgHR = weekLogs.reduce((sum, l) => sum + (l.garmin?.avgHR || 0), 0) /
     (weekLogs.filter(l => l.garmin).length || 1);
-  return { totalVolume, workoutsCompleted, avgHR: Math.round(avgHR), weekLogs };
+  return { totalVolume, workoutsCompleted, workoutsPartial, avgHR: Math.round(avgHR), weekLogs };
 }
 
 export async function getExerciseProgression(exerciseName: string) {
@@ -81,7 +105,7 @@ export async function getExerciseProgression(exerciseName: string) {
   return all.reduce((acc, log) => {
     const ex = log.exercises.find(e => e.exerciseName === exerciseName);
     if (!ex) return acc;
-    const done = ex.sets.filter(s => s.completed);
+    const done = ex.sets.filter(isPerformed);
     if (!done.length) return acc;
     acc.push({
       date: log.completedAt.split('T')[0],
@@ -99,8 +123,7 @@ export async function getMonthlyStats() {
     const month = log.completedAt.substring(0, 7);
     if (!months[month]) months[month] = { volume: 0, count: 0, avgHR: 0, hrCount: 0 };
     months[month].count++;
-    months[month].volume += log.exercises.reduce((sum, ex) =>
-      sum + ex.sets.filter(s => s.completed).reduce((ss, s) => ss + s.reps * s.weight, 0), 0);
+    months[month].volume += logVolume(log);
     if (log.garmin?.avgHR) { months[month].avgHR += log.garmin.avgHR; months[month].hrCount++; }
   }
   return months;
