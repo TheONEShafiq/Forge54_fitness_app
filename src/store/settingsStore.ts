@@ -5,6 +5,7 @@ export type ProgramLength = 4 | 5 | 6;
 const KEYS = {
   programLength: 'forge_program_length_weeks',
   equipment: 'forge_equipment',
+  autoStart: 'forge_auto_start_sets',
 };
 
 // Seeded from the athlete's home-gym inventory (see ASSISTANT_CONTEXT.md).
@@ -46,4 +47,13 @@ export async function removeEquipment(item: string): Promise<string[]> {
   const updated = current.filter(e => e !== item);
   await AsyncStorage.setItem(KEYS.equipment, JSON.stringify(updated));
   return updated;
+}
+
+// Opt-out: timed sets start on their own when the lead-in countdown ends.
+export async function getAutoStart(): Promise<boolean> {
+  return (await AsyncStorage.getItem(KEYS.autoStart)) !== 'false';
+}
+
+export async function setAutoStart(enabled: boolean): Promise<void> {
+  await AsyncStorage.setItem(KEYS.autoStart, enabled ? 'true' : 'false');
 }
