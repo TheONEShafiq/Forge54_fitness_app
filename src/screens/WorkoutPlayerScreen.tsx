@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
 import { saveWorkoutLog, isPerformed } from '../store/workoutStore';
+import { getAutoStart } from '../store/settingsStore';
 import type { WorkoutLog, ExerciseLog } from '../store/workoutStore';
 import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -40,6 +41,10 @@ function announceExercise(ex: any) {
 // ── Main component ────────────────────────────────────────────────────────────
 type TimerMode = 'exercise' | 'rest' | 'interval_work' | 'interval_rest' | 'countdown';
 const COUNTDOWN_CUES = ['3', '2', '1'];
+// Lead-in before a timed set: 3-2-1 when you tap Start; a little longer when
+// the player moves on by itself, so the exercise announcement fits before 3-2-1.
+const LEAD_IN_SEC = 3;
+const AUTO_LEAD_IN_SEC = 5;
 
 export default function WorkoutPlayerScreen() {
   const { workoutId } = useLocalSearchParams<{ workoutId: string }>();
@@ -69,10 +74,16 @@ export default function WorkoutPlayerScreen() {
   const [currentSetIdx, setCurrentSetIdx] = useState(0);
   // Which of `sides` a timed unilateral exercise is on.
   const [sideIdx, setSideIdx] = useState(0);
+  // True while the previous exercise's rest runs on this card as its lead-in.
+  const [restBeforeStart, setRestBeforeStart] = useState(false);
 
   const tickRef = useRef<any>(null);
   const phaseRef = useRef<{ deadline: number; onDone: () => void; shown: number; pausedMsLeft: number | null } | null>(null);
   const sessionRef = useRef<any>(null);
+  const autoStartRef = useRef(true);
+  // Set by a natural hand-off to the next exercise: the rest (seconds) that
+  // should lead into it. Null when the user jumped or skipped there.
+  const leadInRef = useRef<number | null>(null);
   const startedAtRef = useRef(new Date().toISOString());
   // Set once the session has been saved or discarded, so the beforeRemove
   // guard lets the navigation through.
@@ -96,6 +107,7 @@ export default function WorkoutPlayerScreen() {
     activateKeepAwakeAsync();
     // Load the 3-2-1 clips up front so the first digit doesn't pay player start-up cost.
     preloadCues(COUNTDOWN_CUES);
+    getAutoStart().then(v => { autoStartRef.current = v; });
     sessionRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
     return () => {
       deactivateKeepAwake();
@@ -117,6 +129,7 @@ export default function WorkoutPlayerScreen() {
     setIntervalIsWork(true);
     setTimerMode('exercise');
     setSideIdx(0);
+    setRestBeforeStart(false);
 
     if (ex.type === 'sets') {
       // Unilateral exercises get one row per side per set, in authored side order.
@@ -146,6 +159,9 @@ export default function WorkoutPlayerScreen() {
     }
 
     setTimeout(() => announceExercise(ex), 300);
+    const leadIn = leadInRef.current;
+    leadInRef.current = null;
+    if (leadIn !== null) beginLeadIn(ex, leadIn);
   }, [exIdx, exerciseList]);
 
   // Timer callbacks close over the render that started them, so anything that
@@ -231,7 +247,28 @@ export default function WorkoutPlayerScreen() {
     return (ex.sides && ex.perSide[ex.sides[side]]?.duration) || ex.duration || 0;
   }
 
-  function startExerciseTimer(side = sideIdx) {
+  // After a natural hand-off: run the previous exercise's rest here, counting
+  // into this exercise, and auto-start it if it's timed.
+  function beginLeadIn(ex: any, restSec: number) {
+    const auto = autoStartRef.current && ex.type === 'time';
+    if (restSec > 0) {
+      setRestBeforeStart(true);
+      startPhase(Math.max(restSec, auto ? AUTO_LEAD_IN_SEC : 0), 'rest', () => {
+        setRestBeforeStart(false);
+        setTimerMode('exercise');
+        if (auto) startWork(0);
+      });
+    } else if (auto) {
+      startPhase(AUTO_LEAD_IN_SEC, 'countdown', () => startWork(0));
+    }
+  }
+
+  function startWithLeadIn() {
+    const side = sideIdx;
+    startPhase(LEAD_IN_SEC, 'countdown', () => startWork(side));
+  }
+
+  function startWork(side = sideIdx) {
     const ex = currentEx;
     if (!ex || ex.type !== 'time') return;
 
@@ -246,12 +283,11 @@ export default function WorkoutPlayerScreen() {
       if (ex.sides && side < ex.sides.length - 1) {
         setSideIdx(side + 1);
         safeSpeak('Switch sides.');
-        startExerciseTimer(side + 1);
+        startWork(side + 1);
         return;
       }
-      const restSec = ex.restAfter || 0;
-      if (restSec > 0) startRestTimer(restSec, () => advanceExercise());
-      else advanceExercise();
+      // The rest runs on the next exercise's card, leading into it.
+      advanceExercise('done', ex.restAfter || 0);
     });
   }
 
@@ -261,9 +297,7 @@ export default function WorkoutPlayerScreen() {
     startPhase(isWork ? def.workSec : def.restSec, isWork ? 'interval_work' : 'interval_rest', () => {
       if (!isWork && round >= def.rounds) {
         safeSpeak('All intervals complete. Great work.');
-        const restSec = currentEx?.restAfter || 0;
-        if (restSec > 0) startRestTimer(restSec, () => advanceExercise());
-        else advanceExercise();
+        advanceExercise('done', currentEx?.restAfter || 0);
         return;
       }
       const nextIsWork = !isWork;
@@ -278,13 +312,14 @@ export default function WorkoutPlayerScreen() {
   function toggleTimer() {
     if (timerRunning) pausePhase();
     else if (phaseRef.current) resumePhase();
-    else startExerciseTimer();
+    else startWithLeadIn();
   }
 
-  function advanceExercise(outcome: 'done' | 'skipped' = 'done') {
+  function advanceExercise(outcome: 'done' | 'skipped' = 'done', restBeforeNext = 0) {
     stopPhase();
     setTimerRunning(false);
     const { exIdx: idx, exerciseList: list } = liveRef.current;
+    leadInRef.current = outcome === 'done' ? restBeforeNext : null;
     const outcomes = { ...liveRef.current.exerciseOutcome, [idx]: outcome };
     liveRef.current.exerciseOutcome = outcomes;
     setExerciseOutcome(outcomes);
@@ -332,19 +367,13 @@ export default function WorkoutPlayerScreen() {
     progressAfterSetChange(updated, idx);
   }
 
+  // Ends the rest early and carries on exactly as if it had run out.
   function skipRest() {
+    const phase = phaseRef.current;
     stopPhase();
     setTimerRunning(false);
     setTimerMode('exercise');
-    safeSpeak('Skipping rest.');
-    const ex = currentEx;
-    if (!ex) return;
-    const entries = allSetLogs[exIdx] || [];
-    const completedSets = entries.filter((e: any) => e.completed).length;
-    const totalSets = entries.length;
-    if (completedSets >= totalSets) {
-      advanceExercise();
-    }
+    phase?.onDone();
   }
 
   function buildSessionLog(status: WorkoutLog['status']): WorkoutLog {
@@ -582,7 +611,7 @@ export default function WorkoutPlayerScreen() {
         {(currentEx.type === 'time' || isResting) ? (
           <View style={s.timerBlock}>
             {/* Tabata / Interval counter */}
-            {intDef && !isResting && (
+            {intDef && !isResting && timerMode !== 'countdown' && (
               <View style={s.intervalRow}>
                 <View style={[s.intervalPill, { backgroundColor: intervalIsWork ? C.lime + '33' : C.rest + '33' }]}>
                   <Text style={[s.intervalPillText, { color: intervalIsWork ? C.lime : C.rest }]}>
@@ -601,7 +630,7 @@ export default function WorkoutPlayerScreen() {
             )}
 
             <Text style={[s.timerLabel, isResting && { color: C.rest }]}>
-              {isResting ? 'REST' : (intDef ? (intervalIsWork ? 'WORK' : 'REST') : 'remaining')}
+              {isResting ? 'REST' : timerMode === 'countdown' ? 'GET READY' : (intDef ? (intervalIsWork ? 'WORK' : 'REST') : 'remaining')}
             </Text>
 
             {!isResting && (
@@ -613,6 +642,7 @@ export default function WorkoutPlayerScreen() {
             {isResting && (
               <Text style={s.restLabel}>
                 {(() => {
+                  if (restBeforeStart) return `Up next: ${currentEx.displayName || currentEx.name}`;
                   const entries = allSetLogs[exIdx] || [];
                   const done = entries.filter((e: any) => e.completed).length;
                   const total = entries.length;

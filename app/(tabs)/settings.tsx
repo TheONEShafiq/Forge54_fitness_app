@@ -9,6 +9,7 @@ import { colors, spacing, radius } from '../../src/theme';
 import {
   getProgramLength, setProgramLength as persistProgramLength, ProgramLength,
   getEquipment, addEquipment, removeEquipment,
+  getAutoStart, setAutoStart,
 } from '../../src/store/settingsStore';
 import {
   getCloudVoiceEnabled, setCloudVoiceEnabled, getTtsApiKey, setTtsApiKey,
@@ -51,6 +52,7 @@ export default function SettingsScreen() {
   const [newItem, setNewItem] = useState('');
   const [programSavedJustNow, setProgramSavedJustNow] = useState(false);
   const [cloudVoiceEnabled, setCloudVoiceEnabledState] = useState(false);
+  const [autoStart, setAutoStartState] = useState(true);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [hasStoredKey, setHasStoredKey] = useState(false);
   const [savedJustNow, setSavedJustNow] = useState(false);
@@ -64,6 +66,7 @@ export default function SettingsScreen() {
       getProgramLength().then(v => { setProgramLengthState(v); setOriginalProgramLength(v); });
       getEquipment().then(v => { setEquipment(v); setOriginalEquipment(v); });
       getCloudVoiceEnabled().then(setCloudVoiceEnabledState);
+      getAutoStart().then(setAutoStartState);
       getTtsApiKey().then(k => setHasStoredKey(!!k));
       getGarminClientId().then(k => setHasGarminClientId(!!k));
       setCrashLog(readCrashLog());
@@ -99,6 +102,11 @@ export default function SettingsScreen() {
     setOriginalEquipment(equipment);
     setProgramSavedJustNow(true);
     setTimeout(() => setProgramSavedJustNow(false), 2000);
+  }
+
+  async function handleToggleAutoStart(value: boolean) {
+    setAutoStartState(value);
+    await setAutoStart(value);
   }
 
   async function handleToggleCloudVoice(value: boolean) {
@@ -181,6 +189,22 @@ export default function SettingsScreen() {
         {!isProgramDirty && programSavedJustNow && (
           <Text style={s.savedConfirmText}>Saved ✓</Text>
         )}
+
+        {/* Workout player */}
+        <Text style={[s.sectionTitle, { marginTop: spacing.lg }]}>Workout Player</Text>
+        <Text style={s.sectionSub}>
+          Timed exercises start on their own after a 3-2-1 countdown, and the rest before the
+          next exercise counts straight into it. Turn off to tap Start yourself.
+        </Text>
+        <View style={s.voiceRow}>
+          <Text style={s.voiceLabel}>Auto-start timed sets</Text>
+          <Switch
+            value={autoStart}
+            onValueChange={handleToggleAutoStart}
+            trackColor={{ false: colors.border, true: colors.accentDim }}
+            thumbColor={autoStart ? colors.accent : '#888'}
+          />
+        </View>
 
         {/* Voice */}
         <Text style={[s.sectionTitle, { marginTop: spacing.lg }]}>Voice</Text>
