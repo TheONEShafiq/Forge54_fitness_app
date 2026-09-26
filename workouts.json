@@ -65,7 +65,7 @@
               "name": "Core Tabata",
               "duration": 8,
               "tabata": true,
-              "tabataNote": "4 exercises x 2 rounds = 8 min. 20 sec on / 10 sec off. Rest 60 sec between rounds.",
+              "tabataNote": "4 exercises x 2 rounds = 8 min. 20 sec on / 10 sec off. Rest 60 sec between rounds.", "restBetweenRounds": 60,
               "exercises": [
                 { "name": "Hollow Body Hold", "type": "time", "duration": 20, "sets": 2, "weight": 0, "cue": "Lower back pressed to floor. Arms overhead. Hold the dish shape." },
                 { "name": "Mountain Climbers", "type": "time", "duration": 20, "sets": 2, "weight": 0, "cue": "Explosive drive. Hips level. Drive knees to chest alternating." },
@@ -533,7 +533,7 @@
               "name": "Core Finisher",
               "duration": 5,
               "tabata": true,
-              "tabataNote": "2 rounds: sandbag sit-up press + max plank hold. Rest 30 sec between rounds.",
+              "tabataNote": "2 rounds: sandbag sit-up press + max plank hold. Rest 30 sec between rounds.", "restBetweenRounds": 30,
               "exercises": [
                 { "name": "Sandbag Sit-Up + Press", "type": "sets", "sets": 2, "reps": 15, "weight": 50, "rest": 30, "cue": "Hold bag at chest. Sit up. Press overhead at top. Control down." },
                 { "name": "Plank Hold — Max Time", "type": "time", "duration": 60, "sets": 2, "weight": 0, "cue": "Breathe slowly. Squeeze glutes and quads. Hold until failure." }

@@ -337,7 +337,8 @@ export default function WorkoutPlayerScreen() {
     const completedSets = updatedEntries.filter((e: any) => e.completed).length;
     const nextRow = updatedEntries[idx + 1];
     if (completedSets >= updatedEntries.length) {
-      advanceExercise();
+      // Circuit items carry the rest that follows them (round rest included).
+      advanceExercise('done', ex?.restAfterLast || 0);
     } else if (ex?.sides && nextRow && !nextRow.completed && nextRow.side !== updatedEntries[idx].side
                && Math.floor((idx + 1) / ex.sides.length) === Math.floor(idx / ex.sides.length)) {
       // Other side of the same set is next: no rest in between.
@@ -552,6 +553,7 @@ export default function WorkoutPlayerScreen() {
                             ? `${def.isTabata ? 'Tabata · ' : ''}${def.rounds} rounds · ${def.workSec}s on / ${def.restSec}s off`
                             : `${Math.floor((ex.duration||0)/60)}:${String((ex.duration||0)%60).padStart(2,'0')}${ex.sides ? ' each side' : ''}`}
                         {ex.restAfter > 0 && !def ? ` · ${ex.restAfter}s rest` : ''}
+                        {ex.roundLabel ? ` · ${ex.roundLabel}` : ''}
                       </Text>
                     </View>
                     {isCurrent && <Text style={s.currentTag}>Current ▶</Text>}
@@ -590,7 +592,7 @@ export default function WorkoutPlayerScreen() {
       <View style={s.progressWrap}>
         <View style={[s.progressFill, { width: `${progress}%`, backgroundColor: phaseColor }]} />
       </View>
-      <Text style={s.progressText}>{exIdx + 1} of {exerciseList.length}  ·  {currentEx.sectionName}</Text>
+      <Text style={s.progressText}>{exIdx + 1} of {exerciseList.length}  ·  {currentEx.sectionName}{currentEx.roundLabel ? `  ·  ${currentEx.roundLabel}` : ''}</Text>
 
       <ScrollView style={s.scroll} showsVerticalScrollIndicator={false}>
         {/* Phase / Rest badge */}
