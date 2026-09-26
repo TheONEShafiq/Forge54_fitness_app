@@ -10,7 +10,9 @@ import {
   getProgramLength, setProgramLength as persistProgramLength, ProgramLength,
   getEquipment, addEquipment, removeEquipment,
   getAutoStart, setAutoStart,
+  getProfile, saveProfile, Profile,
 } from '../../src/store/settingsStore';
+import ProfileForm from '../../src/components/ProfileForm';
 import {
   getCloudVoiceEnabled, setCloudVoiceEnabled, getTtsApiKey, setTtsApiKey,
 } from '../../src/utils/ttsService';
@@ -53,6 +55,8 @@ export default function SettingsScreen() {
   const [programSavedJustNow, setProgramSavedJustNow] = useState(false);
   const [cloudVoiceEnabled, setCloudVoiceEnabledState] = useState(false);
   const [autoStart, setAutoStartState] = useState(true);
+  // undefined = still loading; the form mounts once the stored profile is known.
+  const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [hasStoredKey, setHasStoredKey] = useState(false);
   const [savedJustNow, setSavedJustNow] = useState(false);
@@ -67,6 +71,7 @@ export default function SettingsScreen() {
       getEquipment().then(v => { setEquipment(v); setOriginalEquipment(v); });
       getCloudVoiceEnabled().then(setCloudVoiceEnabledState);
       getAutoStart().then(setAutoStartState);
+      getProfile().then(setProfile);
       getTtsApiKey().then(k => setHasStoredKey(!!k));
       getGarminClientId().then(k => setHasGarminClientId(!!k));
       setCrashLog(readCrashLog());
@@ -134,6 +139,17 @@ export default function SettingsScreen() {
     <SafeAreaView style={s.container}>
       <ScrollView contentContainerStyle={{ padding: spacing.md }} showsVerticalScrollIndicator={false}>
         <Text style={s.title}>Settings</Text>
+
+        {/* Profile */}
+        <Text style={s.sectionTitle}>Profile</Text>
+        <Text style={s.sectionSub}>Used to generate your training program. Equipment and program length below are part of it too.</Text>
+        {profile !== undefined && (
+          <ProfileForm
+            initial={profile}
+            onSave={async p => { await saveProfile(p); setProfile(p); }}
+          />
+        )}
+        <View style={{ height: spacing.lg }} />
 
         {/* Program length */}
         <Text style={s.sectionTitle}>Program Length</Text>

@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, spacing, radius } from '../../src/theme';
 import { resolveAllWorkouts, getActiveWeeks } from '../../src/utils/workoutResolver';
-import { getProgramLength, ProgramLength } from '../../src/store/settingsStore';
+import { getProgramLength, ProgramLength, shouldPromptForProfile } from '../../src/store/settingsStore';
 
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
@@ -37,7 +37,9 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       getProgramLength().then(setProgramLength);
-    }, [])
+      // First launch with no profile: ask once (Save or "Not now" both stop it).
+      shouldPromptForProfile().then(prompt => { if (prompt) router.push('/onboarding'); });
+    }, [router])
   );
 
   const allWorkouts = resolveAllWorkouts(programLength);
