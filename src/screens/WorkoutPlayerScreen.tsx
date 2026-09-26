@@ -584,7 +584,6 @@ export default function WorkoutPlayerScreen() {
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
         <TouchableOpacity onPress={() => setView('list')}><Text style={s.backBtn}>≡  All Exercises</Text></TouchableOpacity>
-        <TouchableOpacity onPress={skipExercise}><Text style={s.skipExerciseBtn}>Skip ▶</Text></TouchableOpacity>
         <Text style={s.elapsedText}>{elapsedStr}</Text>
       </View>
       <View style={s.progressWrap}>
@@ -695,15 +694,6 @@ export default function WorkoutPlayerScreen() {
                 </TouchableOpacity>
               </View>
             ))}
-            {/* Skip the next set that hasn't been done yet */}
-            {setEntries.some((e: any) => !e.completed) && (
-              <TouchableOpacity
-                style={s.skipSetLink}
-                onPress={() => skipSet(setEntries.findIndex((e: any) => !e.completed))}
-              >
-                <Text style={s.skipSetLinkText}>Skip this set ▶</Text>
-              </TouchableOpacity>
-            )}
             {/* Rest indicator */}
             {currentEx.restAfter > 0 && (
               <View style={s.restHint}>
@@ -723,9 +713,21 @@ export default function WorkoutPlayerScreen() {
           </TouchableOpacity>
         </View>
       ) : (
+        // Skip controls live here, in one-handed thumb reach mid-set.
         <View style={s.controls}>
-          <TouchableOpacity style={[s.swapBtn, { flex: 1 }]} onPress={() => setShowSwap(true)}>
+          <TouchableOpacity style={s.swapBtn} onPress={() => setShowSwap(true)}>
             <Text style={s.swapBtnText}>⟳  Swap</Text>
+          </TouchableOpacity>
+          {currentEx.type === 'sets' && setEntries.some((e: any) => !e.completed) && (
+            <TouchableOpacity
+              style={s.skipBtn}
+              onPress={() => skipSet(setEntries.findIndex((e: any) => !e.completed))}
+            >
+              <Text style={s.skipBtnText} numberOfLines={1} adjustsFontSizeToFit>Skip set ▶</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={s.skipBtn} onPress={skipExercise}>
+            <Text style={s.skipBtnText} numberOfLines={1} adjustsFontSizeToFit>Skip exercise ▶▶</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -761,7 +763,6 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
   backBtn: { fontSize: 14, color: C.textMid, fontWeight: '500' },
-  skipExerciseBtn: { fontSize: 13, color: C.textMid, fontWeight: '600' },
   headerTitle: { fontSize: 15, fontWeight: '600', color: C.text, flex: 1, textAlign: 'center', marginHorizontal: 8 },
   elapsedText: { fontSize: 13, color: C.textDim, minWidth: 40, textAlign: 'right' },
   progressWrap: { height: 3, backgroundColor: C.elevated, marginHorizontal: 16 },
@@ -805,11 +806,11 @@ const s = StyleSheet.create({
   setCheckText: { fontSize: 16, color: C.textDim },
   restHint: { marginTop: 10, padding: 10, backgroundColor: C.rest + '15', borderRadius: 8, borderWidth: 1, borderColor: C.rest + '33' },
   restHintText: { fontSize: 12, color: C.rest },
-  skipSetLink: { alignItems: 'center', paddingVertical: 10, marginTop: 4 },
-  skipSetLinkText: { fontSize: 13, color: C.textMid, fontWeight: '600' },
   controls: { flexDirection: 'row', gap: 10, padding: 16, borderTopWidth: 1, borderTopColor: C.elevated },
-  swapBtn: { flex: 1, padding: 14, borderRadius: 10, borderWidth: 1, borderColor: C.borderLight, alignItems: 'center' },
+  swapBtn: { flex: 1, minHeight: 48, padding: 14, borderRadius: 10, borderWidth: 1, borderColor: C.borderLight, alignItems: 'center', justifyContent: 'center' },
   swapBtnText: { fontSize: 14, color: C.textMid, fontWeight: '600' },
+  skipBtn: { flex: 1, minHeight: 48, paddingVertical: 14, paddingHorizontal: 8, borderRadius: 10, borderWidth: 1, borderColor: C.textDim, backgroundColor: C.elevated, alignItems: 'center', justifyContent: 'center' },
+  skipBtnText: { fontSize: 14, color: C.text, fontWeight: '700' },
   nextBtn: { flex: 2, padding: 14, borderRadius: 10, alignItems: 'center' },
   nextBtnText: { fontSize: 15, fontWeight: '700', color: C.bg },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
