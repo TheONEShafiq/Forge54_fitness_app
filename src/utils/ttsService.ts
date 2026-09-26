@@ -63,6 +63,48 @@ function playSource(source: number | string) {
   }
 }
 
+// Short timing cues (the 3-2-1 countdown) keep one long-lived player each.
+// Creating a player per call adds start-up latency that varies from clip to
+// clip, which made the spoken countdown sound uneven.
+const cuePlayers = new Map<string, ReturnType<typeof createAudioPlayer>>();
+
+export function preloadCues(texts: string[]) {
+  ensureAudioMode();
+  for (const text of texts) {
+    const asset = TTS_MANIFEST[text];
+    if (asset === undefined || cuePlayers.has(text)) continue;
+    try {
+      const player = createAudioPlayer(asset);
+      // Rewind as soon as a cue finishes so the next play() starts instantly
+      // (seekTo is async; seeking right before play() can race).
+      player.addListener('playbackStatusUpdate', (status) => {
+        if (status.didJustFinish) player.seekTo(0);
+      });
+      cuePlayers.set(text, player);
+    } catch (e) {
+      console.warn('cue preload failed:', e);
+    }
+  }
+}
+
+export function speakCue(text: string) {
+  const player = cuePlayers.get(text);
+  if (!player) { speak(text); return; }
+  try {
+    player.play();
+  } catch (e) {
+    console.warn('cue playback error:', e);
+    speak(text);
+  }
+}
+
+export function releaseCues() {
+  for (const player of cuePlayers.values()) {
+    try { player.remove(); } catch {}
+  }
+  cuePlayers.clear();
+}
+
 // Phrases pre-rendered at build time (scripts/generateTtsAssets.ts) ship inside
 // the app itself — no network, no key, no per-user cost, works for anyone who
 // downloads the app. Only text outside that fixed set (e.g. a newly added
