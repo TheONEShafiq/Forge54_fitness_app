@@ -20,7 +20,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0a0806"
+        "backgroundColor": "#ec7221"
       },
       "newArchEnabled": true,
       "package": "com.sjadallah.forge54"
