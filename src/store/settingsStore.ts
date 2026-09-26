@@ -63,15 +63,18 @@ export async function setAutoStart(enabled: boolean): Promise<void> {
 // (#5, v12) reads it together with equipment and program length.
 export type Gender = 'male' | 'female' | 'other' | 'unspecified';
 export type WorkoutType = 'crossfit' | 'hiit' | 'strength' | 'cardio' | 'mixed' | 'bodyweight';
-export type SessionLength = 20 | 30 | 45 | 60;
 
 export interface Profile {
   age: number;
   gender: Gender;
-  workoutType: WorkoutType;
-  // Upper bound in minutes: ≤20, ≤30, 30–45, 60.
-  sessionLength: SessionLength;
+  // One or more; order is the order they were picked.
+  workoutTypes: WorkoutType[];
+  // Target session length, 5-minute steps up to SESSION_MAX_MINUTES.
+  sessionMinutes: number;
 }
+
+export const SESSION_MAX_MINUTES = 90;
+export const SESSION_STEP_MINUTES = 5;
 
 export const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: 'male', label: 'Male' },
@@ -89,19 +92,21 @@ export const WORKOUT_TYPE_OPTIONS: { value: WorkoutType; label: string }[] = [
   { value: 'bodyweight', label: 'Bodyweight' },
 ];
 
-export const SESSION_LENGTH_OPTIONS: { value: SessionLength; label: string }[] = [
-  { value: 20, label: '≤ 20 min' },
-  { value: 30, label: '≤ 30 min' },
-  { value: 45, label: '30–45 min' },
-  { value: 60, label: '60 min' },
-];
 
 const PROFILE_KEY = 'forge_profile';
 const PROFILE_PROMPTED_KEY = 'forge_profile_prompted';
 
 export async function getProfile(): Promise<Profile | null> {
   const raw = await AsyncStorage.getItem(PROFILE_KEY);
-  return raw ? JSON.parse(raw) : null;
+  if (!raw) return null;
+  const p = JSON.parse(raw);
+  // Pre-release shape stored a single workoutType and sessionLength bucket.
+  return {
+    age: p.age,
+    gender: p.gender,
+    workoutTypes: p.workoutTypes ?? (p.workoutType ? [p.workoutType] : []),
+    sessionMinutes: p.sessionMinutes ?? p.sessionLength ?? 0,
+  };
 }
 
 export async function saveProfile(profile: Profile): Promise<void> {
