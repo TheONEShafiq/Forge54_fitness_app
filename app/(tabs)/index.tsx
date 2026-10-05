@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
 } from 'react-native';
@@ -6,7 +6,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, spacing, radius } from '../../src/theme';
 import { resolveAllWorkouts, getActiveWeeks } from '../../src/utils/workoutResolver';
-import { getProgramLength, ProgramLength, shouldPromptForProfile } from '../../src/store/settingsStore';
+import {
+  getProgramLength, ProgramLength, shouldPromptForProfile, getProgramStartDate, fromDateKey,
+} from '../../src/store/settingsStore';
+import { getAllLogs, WorkoutLog } from '../../src/store/workoutStore';
 
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
@@ -24,6 +27,32 @@ const PHASE_COLORS: Record<string, string> = {
   deload:     '#a78bfa',
 };
 
+type DoneStatus = Exclude<WorkoutLog['status'], 'skipped'>;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Best outcome logged per workout id during the current program run (on or
+// after the start date): one complete session outranks any partials. Sessions
+// from earlier runs stay in Progress but don't mark this run's workouts done.
+async function loadDoneStatus(start: Date): Promise<Record<string, DoneStatus>> {
+  const done: Record<string, DoneStatus> = {};
+  for (const log of Object.values(await getAllLogs())) {
+    if (new Date(log.completedAt) < start) continue;
+    if (log.status === 'complete') done[log.id] = 'complete';
+    else if (log.status === 'partial' && !done[log.id]) done[log.id] = 'partial';
+  }
+  return done;
+}
+
+// Program weeks follow calendar weeks (Mon–Sun), starting with the week that
+// contains the start date, so "Monday" workouts always land on a Monday.
+function programWeekOn(start: Date, day: Date): number {
+  const monday = new Date(start);
+  monday.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  const today = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+  return Math.floor(Math.round((today.getTime() - monday.getTime()) / DAY_MS) / 7) + 1;
+}
+
 function fmtDuration(d: any): string {
   if (d == null) return '';
   return typeof d === 'number' ? `${d} min` : String(d);
@@ -33,10 +62,23 @@ export default function HomeScreen() {
   const router = useRouter();
   const [expandedWeek, setExpandedWeek] = useState<number>(1);
   const [programLength, setProgramLength] = useState<ProgramLength>(6);
+  const [doneStatus, setDoneStatus] = useState<Record<string, DoneStatus>>({});
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const autoExpandedRef = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
       getProgramLength().then(setProgramLength);
+      getProgramStartDate().then(key => {
+        const start = fromDateKey(key);
+        setStartDate(start);
+        loadDoneStatus(start).then(setDoneStatus);
+        // Open on the current week the first time; after that respect the user's choice.
+        if (!autoExpandedRef.current) {
+          autoExpandedRef.current = true;
+          setExpandedWeek(Math.max(1, programWeekOn(start, new Date())));
+        }
+      });
       // First launch with no profile: ask once (Save or "Not now" both stop it).
       shouldPromptForProfile().then(prompt => { if (prompt) router.push('/onboarding'); });
     }, [router])
@@ -45,9 +87,14 @@ export default function HomeScreen() {
   const allWorkouts = resolveAllWorkouts(programLength);
   const activeWeeks = getActiveWeeks(programLength);
   const todayName = DAY_NAMES[new Date().getDay()];
-  const todayWorkout = allWorkouts.find(
-    (w: any) => w.day?.toLowerCase() === todayName.toLowerCase()
-  );
+  const notStarted = !!startDate && new Date() < startDate;
+  const currentWeek = startDate ? programWeekOn(startDate, new Date()) : 1;
+  const finished = currentWeek > programLength;
+  const todayWorkout = startDate && !notStarted && !finished
+    ? allWorkouts.find((w: any) => w.weekNumber === currentWeek && w.day?.toLowerCase() === todayName.toLowerCase())
+    : undefined;
+  const doneCount = allWorkouts.filter((w: any) => doneStatus[w.id] === 'complete').length;
+  const startLabel = startDate?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
   return (
     <SafeAreaView style={s.container}>
@@ -70,7 +117,11 @@ export default function HomeScreen() {
           <View style={s.todayCard}>
             <View style={s.todayCardTop}>
               <View style={{ flex: 1 }}>
-                <Text style={s.todayLabel}>TODAY</Text>
+                <Text style={s.todayLabel}>
+                  TODAY
+                  {doneStatus[todayWorkout.id] === 'complete' && <Text style={{ color: colors.success }}>  ·  COMPLETED ✓</Text>}
+                  {doneStatus[todayWorkout.id] === 'partial' && <Text style={{ color: colors.warning }}>  ·  PARTIAL ◐</Text>}
+                </Text>
                 <Text style={s.todayTitle}>{todayWorkout.title}</Text>
                 <Text style={s.todayMeta}>
                   {fmtDuration(todayWorkout.duration)}
@@ -91,18 +142,44 @@ export default function HomeScreen() {
               style={s.startBtn}
               onPress={() => router.push({ pathname: '/player', params: { workoutId: todayWorkout.id } })}
             >
-              <Text style={s.startBtnText}>Start Workout  ▶</Text>
+              <Text style={s.startBtnText}>
+                {doneStatus[todayWorkout.id] === 'complete' ? 'Do It Again  ▶' : 'Start Workout  ▶'}
+              </Text>
             </TouchableOpacity>
           </View>
-        ) : (
+        ) : notStarted ? (
+          <View style={s.restCard}>
+            <Text style={s.restTitle}>Program starts {startLabel}</Text>
+            <Text style={s.restSub}>You can still open any workout below. Change the date in Settings.</Text>
+          </View>
+        ) : finished ? (
+          <View style={s.restCard}>
+            <Text style={s.restTitle}>Program finished 🏁</Text>
+            <Text style={s.restSub}>
+              {doneCount} of {allWorkouts.length} workouts completed. To run it again, set a new start date in Settings — your history stays in Progress.
+            </Text>
+            <TouchableOpacity style={[s.startBtn, { marginTop: spacing.md }]} onPress={() => router.push('/(tabs)/settings')}>
+              <Text style={s.startBtnText}>Set New Start Date</Text>
+            </TouchableOpacity>
+          </View>
+        ) : startDate ? (
           <View style={s.restCard}>
             <Text style={s.restTitle}>Rest Day</Text>
             <Text style={s.restSub}>No workout today. Recovery is training too.</Text>
           </View>
-        )}
+        ) : null}
 
         {/* Program strip */}
-        <Text style={s.sectionTitle}>Program</Text>
+        <View style={s.programHeader}>
+          <Text style={[s.sectionTitle, { marginBottom: 0 }]}>Program</Text>
+          {startDate && (
+            <Text style={s.programProgress}>
+              {notStarted ? 'Not started' : finished ? 'Finished' : `Week ${currentWeek} of ${programLength}`}
+              {'  ·  '}{doneCount}/{allWorkouts.length} done
+            </Text>
+          )}
+        </View>
+        {startLabel && <Text style={s.programSince}>{notStarted ? 'Starts' : 'Started'} {startLabel}  ·  tap any workout to do it (again)</Text>}
         {activeWeeks.map((week: any) => {
           const isExpanded = expandedWeek === week.week;
           const phaseColor = PHASE_COLORS[week.phase] || colors.textMuted;
@@ -117,6 +194,7 @@ export default function HomeScreen() {
               >
                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={s.weekTitle}>{week.label}</Text>
+                  {week.week === currentWeek && !notStarted && <Text style={s.thisWeek}>THIS WEEK</Text>}
                   <View style={[s.phasePill, { backgroundColor: phaseColor + '22', borderColor: phaseColor }]}>
                     <Text style={[s.phasePillText, { color: phaseColor }]}>
                       {week.phase.charAt(0).toUpperCase() + week.phase.slice(1)}
@@ -131,7 +209,7 @@ export default function HomeScreen() {
                   key={wo.id}
                   style={[
                     s.woRow,
-                    wo.day?.toLowerCase() === todayName.toLowerCase() && s.woRowToday,
+                    wo.id === todayWorkout?.id && s.woRowToday,
                   ]}
                   onPress={() => router.push({ pathname: '/player', params: { workoutId: wo.id } })}
                   activeOpacity={0.7}
@@ -148,7 +226,13 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                   {wo.benchmarkWorkout && <Text style={s.benchTag}>🏆</Text>}
-                  <Text style={s.woArrow}>▶</Text>
+                  {doneStatus[wo.id] === 'complete' ? (
+                    <Text style={[s.woArrow, { color: colors.success }]}>✓</Text>
+                  ) : doneStatus[wo.id] === 'partial' ? (
+                    <Text style={[s.woArrow, { color: colors.warning }]}>◐</Text>
+                  ) : (
+                    <Text style={s.woArrow}>▶</Text>
+                  )}
                 </TouchableOpacity>
               ))}
             </View>
@@ -178,6 +262,10 @@ const s = StyleSheet.create({
   restTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 4 },
   restSub: { fontSize: 13, color: colors.textMuted },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: spacing.sm },
+  programHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 2 },
+  programProgress: { fontSize: 12, fontWeight: '700', color: colors.accent },
+  programSince: { fontSize: 11, color: colors.textMuted, marginBottom: spacing.sm },
+  thisWeek: { fontSize: 9, fontWeight: '800', color: colors.accent, letterSpacing: 0.8 },
   weekCard: { backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, marginBottom: 10, overflow: 'hidden' },
   weekHeader: { flexDirection: 'row', alignItems: 'center', padding: spacing.md },
   weekTitle: { fontSize: 14, fontWeight: '700', color: colors.text },

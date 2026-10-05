@@ -41,7 +41,10 @@ async function ensureAudioMode() {
   if (audioModeReady) return;
   audioModeReady = true;
   try {
-    await setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'duckOthers' });
+    // Mix with, never duck, the user's music. The cue players stay loaded for
+    // the whole workout, so 'duckOthers' kept Spotify/Apple Music softened
+    // the entire time, not just while a cue was speaking.
+    await setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'mixWithOthers' });
   } catch (e) {
     console.warn('setAudioModeAsync failed:', e);
   }
@@ -66,12 +69,21 @@ function playSource(source: number | string) {
 // Short timing cues (the 3-2-1 countdown) keep one long-lived player each.
 // Creating a player per call adds start-up latency that varies from clip to
 // clip, which made the spoken countdown sound uneven.
+//
+// The cue clips are onset-aligned WAVs (scripts/alignCountdownCues.py): the raw
+// TTS MP3s start speaking at different offsets, which made "1" land ~100ms
+// early even with perfectly timed play() calls.
+const CUE_ASSETS: Record<string, number> = {
+  '3': require('../../assets/tts/cues/3.wav'),
+  '2': require('../../assets/tts/cues/2.wav'),
+  '1': require('../../assets/tts/cues/1.wav'),
+};
 const cuePlayers = new Map<string, ReturnType<typeof createAudioPlayer>>();
 
 export function preloadCues(texts: string[]) {
   ensureAudioMode();
   for (const text of texts) {
-    const asset = TTS_MANIFEST[text];
+    const asset = CUE_ASSETS[text] ?? TTS_MANIFEST[text];
     if (asset === undefined || cuePlayers.has(text)) continue;
     try {
       const player = createAudioPlayer(asset);
