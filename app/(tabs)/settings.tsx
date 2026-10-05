@@ -1,8 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
-  StyleSheet, SafeAreaView, Switch, Share,
+  StyleSheet, SafeAreaView, Switch, Share, Alert, Platform,
 } from 'react-native';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { useFocusEffect } from 'expo-router';
 import { File, Paths } from 'expo-file-system';
 import { colors, spacing, radius } from '../../src/theme';
@@ -11,6 +12,7 @@ import {
   getEquipment, addEquipment, removeEquipment,
   getAutoStart, setAutoStart,
   getProfile, saveProfile, Profile,
+  getProgramStartDate, setProgramStartDate, toDateKey, fromDateKey,
 } from '../../src/store/settingsStore';
 import ProfileForm from '../../src/components/ProfileForm';
 import {
@@ -55,6 +57,7 @@ export default function SettingsScreen() {
   const [programSavedJustNow, setProgramSavedJustNow] = useState(false);
   const [cloudVoiceEnabled, setCloudVoiceEnabledState] = useState(false);
   const [autoStart, setAutoStartState] = useState(true);
+  const [programStart, setProgramStart] = useState<Date | null>(null);
   // undefined = still loading; the form mounts once the stored profile is known.
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -71,6 +74,7 @@ export default function SettingsScreen() {
       getEquipment().then(v => { setEquipment(v); setOriginalEquipment(v); });
       getCloudVoiceEnabled().then(setCloudVoiceEnabledState);
       getAutoStart().then(setAutoStartState);
+      getProgramStartDate().then(k => setProgramStart(fromDateKey(k)));
       getProfile().then(setProfile);
       getTtsApiKey().then(k => setHasStoredKey(!!k));
       getGarminClientId().then(k => setHasGarminClientId(!!k));
@@ -107,6 +111,31 @@ export default function SettingsScreen() {
     setOriginalEquipment(equipment);
     setProgramSavedJustNow(true);
     setTimeout(() => setProgramSavedJustNow(false), 2000);
+  }
+
+  // Saved immediately, like the toggles below — it isn't part of program generation.
+  async function changeProgramStart(date: Date) {
+    setProgramStart(date);
+    await setProgramStartDate(toDateKey(date));
+  }
+
+  function openAndroidDatePicker() {
+    DateTimePickerAndroid.open({
+      value: programStart ?? new Date(),
+      mode: 'date',
+      onChange: (e, date) => { if (e.type === 'set' && date) changeProgramStart(date); },
+    });
+  }
+
+  function confirmRestartProgram() {
+    Alert.alert(
+      'Start the program over?',
+      'Week 1 begins today and every workout is marked not done. Your logged sessions stay in Progress.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Start over', onPress: () => changeProgramStart(new Date()) },
+      ],
+    );
   }
 
   async function handleToggleAutoStart(value: boolean) {
@@ -205,6 +234,37 @@ export default function SettingsScreen() {
         {!isProgramDirty && programSavedJustNow && (
           <Text style={s.savedConfirmText}>Saved ✓</Text>
         )}
+
+        {/* Program start */}
+        <Text style={[s.sectionTitle, { marginTop: spacing.lg }]}>Program Start</Text>
+        <Text style={s.sectionSub}>
+          Week 1 begins the week of this date. Workouts you finish from then on are checked off on Home.
+          Move it forward to run the program again — past sessions stay in Progress.
+        </Text>
+        <View style={s.voiceRow}>
+          <Text style={s.voiceLabel}>Start date</Text>
+          {programStart && (Platform.OS === 'ios' ? (
+            <DateTimePicker
+              value={programStart}
+              mode="date"
+              display="compact"
+              themeVariant="dark"
+              onChange={(_, date) => { if (date) changeProgramStart(date); }}
+            />
+          ) : (
+            <TouchableOpacity onPress={openAndroidDatePicker}>
+              <Text style={[s.voiceLabel, { color: colors.accent }]}>
+                {programStart.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <TouchableOpacity
+          style={[s.addBtn, { paddingVertical: 12, backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border }]}
+          onPress={confirmRestartProgram}
+        >
+          <Text style={[s.addBtnText, { color: colors.text }]}>Start Program Over Today</Text>
+        </TouchableOpacity>
 
         {/* Workout player */}
         <Text style={[s.sectionTitle, { marginTop: spacing.lg }]}>Workout Player</Text>

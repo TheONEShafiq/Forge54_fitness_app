@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAllLogs } from './workoutStore';
 
 export type ProgramLength = 4 | 5 | 6;
 
@@ -6,6 +7,7 @@ const KEYS = {
   programLength: 'forge_program_length_weeks',
   equipment: 'forge_equipment',
   autoStart: 'forge_auto_start_sets',
+  programStart: 'forge_program_start_date',
 };
 
 // Seeded from the athlete's home-gym inventory (see ASSISTANT_CONTEXT.md).
@@ -26,6 +28,34 @@ export async function getProgramLength(): Promise<ProgramLength> {
 
 export async function setProgramLength(weeks: ProgramLength): Promise<void> {
   await AsyncStorage.setItem(KEYS.programLength, String(weeks));
+}
+
+// ── Program start date ────────────────────────────────────────────────────────
+// Local calendar date ("YYYY-MM-DD") the current run of the program began.
+// Drives which week is "this week" and which logged sessions count as progress;
+// moving it forward starts the program over without deleting any history.
+export function toDateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export function fromDateKey(key: string): Date {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+export async function getProgramStartDate(): Promise<string> {
+  const stored = await AsyncStorage.getItem(KEYS.programStart);
+  if (stored) return stored;
+  // First read (new install, or an existing user from before this setting):
+  // start at the earliest logged session so existing progress keeps counting.
+  const times = Object.values(await getAllLogs()).map(l => new Date(l.completedAt).getTime()).filter(t => !isNaN(t));
+  const start = toDateKey(times.length ? new Date(Math.min(...times)) : new Date());
+  await AsyncStorage.setItem(KEYS.programStart, start);
+  return start;
+}
+
+export async function setProgramStartDate(key: string): Promise<void> {
+  await AsyncStorage.setItem(KEYS.programStart, key);
 }
 
 export async function getEquipment(): Promise<string[]> {

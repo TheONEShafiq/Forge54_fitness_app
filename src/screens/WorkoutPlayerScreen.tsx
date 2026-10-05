@@ -466,11 +466,12 @@ export default function WorkoutPlayerScreen() {
     // Timers keep running under the alert so "Keep going" resumes seamlessly.
     Alert.alert(
       'End workout?',
-      'Save what you have done so far as a partial session, or discard it.',
+      'Mark it complete, save what you have done as a partial session, or discard it.',
       [
-        { text: 'Keep going', style: 'cancel' },
-        { text: 'Discard', style: 'destructive', onPress: () => { allowLeaveRef.current = true; stopSpeech(); onDiscard(); } },
+        { text: 'Mark complete', onPress: () => { stopSpeech(); handleComplete(); } },
         { text: 'Save as partial', onPress: () => { stopSpeech(); finishSession('partial'); } },
+        { text: 'Discard', style: 'destructive', onPress: () => { allowLeaveRef.current = true; stopSpeech(); onDiscard(); } },
+        { text: 'Keep going', style: 'cancel' },
       ],
     );
   }
@@ -527,7 +528,7 @@ export default function WorkoutPlayerScreen() {
     return (
       <SafeAreaView style={s.safe}>
         <View style={s.header}>
-          <TouchableOpacity onPress={() => router.back()}><Text style={s.backBtn}>✕  End</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => router.back()}><Text style={s.backBtn}>✕  End / Finish</Text></TouchableOpacity>
           <Text style={s.headerTitle} numberOfLines={1}>{workout.title}</Text>
           <Text style={s.elapsedText}>{elapsedStr}</Text>
         </View>
@@ -587,6 +588,8 @@ export default function WorkoutPlayerScreen() {
       <View style={s.header}>
         <TouchableOpacity onPress={() => setView('list')}><Text style={s.backBtn}>≡  All Exercises</Text></TouchableOpacity>
         <Text style={s.elapsedText}>{elapsedStr}</Text>
+        {/* Leaving goes through confirmExit, which offers "Mark complete". */}
+        <TouchableOpacity onPress={() => router.back()}><Text style={[s.backBtn, { color: C.lime, marginLeft: 12 }]}>Finish ✓</Text></TouchableOpacity>
       </View>
       <View style={s.progressWrap}>
         <View style={[s.progressFill, { width: `${progress}%`, backgroundColor: phaseColor }]} />

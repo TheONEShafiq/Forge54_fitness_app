@@ -38,7 +38,8 @@
       "expo-status-bar",
       "expo-router",
       "expo-audio",
-      "expo-web-browser"
+      "expo-web-browser",
+      "@react-native-community/datetimepicker"
     ]
   }
 }
