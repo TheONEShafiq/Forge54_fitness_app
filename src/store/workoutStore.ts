@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { BlockResult } from '../utils/blockTimer';
 
 // `reps`/`weight` are what was actually performed; `planned*` is what the
 // program prescribed. Metrics must only ever sum performed values.
@@ -16,13 +17,16 @@ export interface SetLog {
 
 export interface ExerciseLog {
   exerciseName: string;
-  type: 'sets' | 'time';
+  // 'block' = a whole EMOM / AMRAP / For Time section run on one clock.
+  type: 'sets' | 'time' | 'block';
   sets: SetLog[];
   plannedSets: number;
   // Timed exercises have no set rows — this records whether the timer was run.
   completed: boolean;
   skipped: boolean;
   swappedFrom?: string;
+  // Timed blocks only: rounds / finish time / minutes completed.
+  result?: BlockResult;
 }
 
 export interface WorkoutLog {
@@ -35,6 +39,8 @@ export interface WorkoutLog {
   plannedExerciseCount?: number;
   completedExerciseCount?: number;
   status: 'complete' | 'partial' | 'skipped';
+  // Travel-library sessions; they never check off program workouts.
+  travel?: boolean;
   garmin?: {
     avgHR: number;
     maxHR: number;
@@ -135,4 +141,32 @@ export async function saveGarminToken(token: string): Promise<void> {
 
 export async function getGarminToken(): Promise<string | null> {
   return AsyncStorage.getItem(KEYS.garminToken);
+}
+
+// Every logged result for a timed block, oldest first. Blocks are matched by
+// `result.key` (kind + movements), so a retest in another week lines up.
+export async function getBlockHistory(key: string): Promise<{ date: string; result: BlockResult }[]> {
+  const all = Object.values(await getAllLogs());
+  all.sort((a, b) => new Date(a.completedAt).getTime() - new Date(b.completedAt).getTime());
+  const out: { date: string; result: BlockResult }[] = [];
+  for (const log of all) {
+    for (const ex of log.exercises) {
+      if (ex.result && ex.result.key === key && ex.completed) out.push({ date: log.completedAt, result: ex.result });
+    }
+  }
+  return out;
+}
+
+// All block results grouped by key, oldest first within each — for Progress.
+export async function getAllBlockHistories(): Promise<Record<string, { date: string; result: BlockResult }[]>> {
+  const all = Object.values(await getAllLogs());
+  all.sort((a, b) => new Date(a.completedAt).getTime() - new Date(b.completedAt).getTime());
+  const out: Record<string, { date: string; result: BlockResult }[]> = {};
+  for (const log of all) {
+    for (const ex of log.exercises) {
+      if (!ex.result || !ex.completed) continue;
+      (out[ex.result.key] ||= []).push({ date: log.completedAt, result: ex.result });
+    }
+  }
+  return out;
 }

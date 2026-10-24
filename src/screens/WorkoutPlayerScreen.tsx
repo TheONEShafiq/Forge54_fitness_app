@@ -4,7 +4,7 @@ import {
   StyleSheet, SafeAreaView, Modal, Alert
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
-import { saveWorkoutLog, isPerformed } from '../store/workoutStore';
+import { saveWorkoutLog, isPerformed, getBlockHistory } from '../store/workoutStore';
 import { getAutoStart } from '../store/settingsStore';
 import type { WorkoutLog, ExerciseLog } from '../store/workoutStore';
 import * as Haptics from 'expo-haptics';
@@ -13,7 +13,13 @@ import { speak, stopSpeech, playBell, speakCue, preloadCues, releaseCues } from 
 import {
   INTERVAL_MAP, SUBS, getSubs,
   flattenExercises, buildExerciseAnnouncementText,
+  movementSummary, emomMinuteText,
 } from '../utils/workoutAnnouncements';
+import {
+  eventsBetween, displayAt, fmtClock, blockKey, formatBlockResult, compareResults,
+} from '../utils/blockTimer';
+import type { BlockConfig, BlockEvent, BlockResult } from '../utils/blockTimer';
+import { getTravelWorkout } from '../utils/travelLibrary';
 import type { IntervalDef } from '../utils/workoutAnnouncements';
 import { resolveWorkout } from '../utils/workoutResolver';
 import workoutData from '../../workouts.json';
@@ -23,7 +29,7 @@ const C = {
   text: '#f5f5f5', textMid: '#aaaaaa', textDim: '#666666',
   border: '#2a2a2a', borderLight: '#333333',
   lime: '#a3e635', cooldown: '#a78bfa', success: '#4ade80',
-  rest: '#3b82f6',
+  rest: '#3b82f6', block: '#fb923c',
 };
 const PHASE_COLOR: Record<string, string> = {
   warmup: C.lime, work: C.lime, cooldown: C.cooldown, rest: C.rest,
@@ -45,6 +51,15 @@ const COUNTDOWN_CUES = ['3', '2', '1'];
 // the player moves on by itself, so the exercise announcement fits before 3-2-1.
 const LEAD_IN_SEC = 3;
 const AUTO_LEAD_IN_SEC = 5;
+
+const BLOCK_LABEL: Record<string, string> = { emom: 'EMOM', amrap: 'AMRAP', fortime: 'FOR TIME' };
+function blockCfg(ex: any): BlockConfig {
+  return { kind: ex.blockKind, totalSec: ex.totalSec ?? null, intervalSec: ex.intervalSec || 60 };
+}
+function blockKeyOf(ex: any): string {
+  return blockKey(ex.blockKind, (ex.movements || []).map((m: any) => m.name));
+}
+type BlockStatus = 'idle' | 'running' | 'paused' | 'finished';
 
 export default function WorkoutPlayerScreen() {
   const { workoutId } = useLocalSearchParams<{ workoutId: string }>();
@@ -77,6 +92,18 @@ export default function WorkoutPlayerScreen() {
   // True while the previous exercise's rest runs on this card as its lead-in.
   const [restBeforeStart, setRestBeforeStart] = useState(false);
 
+  // Timed blocks (EMOM / AMRAP / For Time) — one clock for a whole section.
+  const [blockStatus, setBlockStatus] = useState<BlockStatus>('idle');
+  const [blockSec, setBlockSec] = useState(0);
+  const [blockRounds, setBlockRounds] = useState(0);
+  const [blockResults, setBlockResults] = useState<Record<number, BlockResult>>({});
+  const [blockHistory, setBlockHistory] = useState<{ date: string; result: BlockResult }[]>([]);
+  const [pendingResult, setPendingResult] = useState<BlockResult | null>(null);
+  const [extraRepsInput, setExtraRepsInput] = useState('0');
+  const blockRef = useRef<{ startMs: number; pausedAt: number | null; pausedMs: number; lastSec: number; cfg: BlockConfig; ex: any } | null>(null);
+  const blockTickRef = useRef<any>(null);
+  const blockRoundsRef = useRef(0);
+
   const tickRef = useRef<any>(null);
   const phaseRef = useRef<{ deadline: number; onDone: () => void; shown: number; pausedMsLeft: number | null } | null>(null);
   const sessionRef = useRef<any>(null);
@@ -98,6 +125,8 @@ export default function WorkoutPlayerScreen() {
       // with this workout's progressionOverrides before we ever flatten them.
       if (found) return resolveWorkout(found);
     }
+    const travel = getTravelWorkout(workoutId);
+    if (travel) return travel;
     return resolveWorkout(workoutData.weeks[0].workouts[0]);
   }, [workoutId]);
 
@@ -114,6 +143,8 @@ export default function WorkoutPlayerScreen() {
       clearInterval(sessionRef.current);
       clearTimeout(tickRef.current);
       phaseRef.current = null;
+      clearTimeout(blockTickRef.current);
+      blockRef.current = null;
       releaseCues();
       stopSpeech();
     };
@@ -124,6 +155,13 @@ export default function WorkoutPlayerScreen() {
     const ex = exerciseList[exIdx];
     if (!ex) return;
     stopPhase();
+    stopBlock();
+    setBlockStatus('idle');
+    setBlockSec(0);
+    setBlockRounds(0);
+    blockRoundsRef.current = 0;
+    setPendingResult(null);
+    setBlockHistory([]);
     setTimerRunning(false);
     setIntervalRound(1);
     setIntervalIsWork(true);
@@ -153,6 +191,8 @@ export default function WorkoutPlayerScreen() {
         });
         setAllSetLogs(prev => ({ ...prev, [exIdx]: entries }));
       }
+    } else if (ex.type === 'block') {
+      getBlockHistory(blockKeyOf(ex)).then(setBlockHistory).catch(() => {});
     } else {
       const intDef = INTERVAL_MAP[ex.name];
       setTimerValue(intDef ? intDef.workSec : (ex.duration || 0));
@@ -166,8 +206,8 @@ export default function WorkoutPlayerScreen() {
 
   // Timer callbacks close over the render that started them, so anything that
   // builds the session log reads through these instead of stale state.
-  const liveRef = useRef({ exIdx, exerciseList, allSetLogs, exerciseOutcome, swappedFrom, elapsed });
-  liveRef.current = { exIdx, exerciseList, allSetLogs, exerciseOutcome, swappedFrom, elapsed };
+  const liveRef = useRef({ exIdx, exerciseList, allSetLogs, exerciseOutcome, swappedFrom, elapsed, blockResults });
+  liveRef.current = { exIdx, exerciseList, allSetLogs, exerciseOutcome, swappedFrom, elapsed, blockResults };
 
   const currentEx = exerciseList[exIdx];
   const setEntries = allSetLogs[exIdx] || [];
@@ -309,6 +349,171 @@ export default function WorkoutPlayerScreen() {
     });
   }
 
+  // ── Block engine (EMOM / AMRAP / For Time) ───────────────────────────────────
+  // Same approach as the phase timer: elapsed time comes from the wall clock,
+  // ticks land just after each whole second, and every cue for a second fires
+  // exactly once (blockTimer.eventsBetween), even if a tick arrives late.
+  function blockElapsedMs() {
+    const b = blockRef.current;
+    if (!b) return 0;
+    return (b.pausedAt ?? Date.now()) - b.startMs - b.pausedMs;
+  }
+
+  function stopBlock() {
+    clearTimeout(blockTickRef.current);
+    blockTickRef.current = null;
+    blockRef.current = null;
+  }
+
+  function startBlock() {
+    const ex = liveRef.current.exerciseList[liveRef.current.exIdx];
+    if (!ex || ex.type !== 'block') return;
+    stopBlock();
+    blockRoundsRef.current = 0;
+    setBlockRounds(0);
+    blockRef.current = { startMs: Date.now(), pausedAt: null, pausedMs: 0, lastSec: -1, cfg: blockCfg(ex), ex };
+    setBlockStatus('running');
+    setTimerMode('exercise');
+    blockTick();
+  }
+
+  function blockTick() {
+    const b = blockRef.current;
+    if (!b || b.pausedAt !== null) return;
+    const ms = blockElapsedMs();
+    const sec = Math.floor(ms / 1000);
+    if (sec !== b.lastSec) {
+      const events = eventsBetween(b.cfg, b.lastSec, sec);
+      b.lastSec = sec;
+      setBlockSec(sec);
+      for (const e of events) {
+        if (e.type === 'end') { onBlockEvent(b.ex, e); finishBlock('end'); return; }
+        onBlockEvent(b.ex, e);
+      }
+    }
+    blockTickRef.current = setTimeout(blockTick, 1000 - (ms % 1000) + 5);
+  }
+
+  function onBlockEvent(ex: any, e: BlockEvent) {
+    switch (e.type) {
+      case 'start':
+        // The 3-2-1 lead-in already rang the bell. EMOM's first minute
+        // announcement doubles as "go".
+        if (ex.blockKind !== 'emom') safeSpeak('Go!');
+        break;
+      case 'interval': {
+        if (e.index > 0) {
+          playBell();
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        const mv = ex.movements[e.index % ex.movements.length];
+        safeSpeak(emomMinuteText(e.index + 1, e.of, mv));
+        break;
+      }
+      case 'countdown':
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        speakCue(String(e.n));
+        break;
+      case 'halfway': safeSpeak('Halfway.'); break;
+      case 'oneMinute': safeSpeak('One minute left.'); break;
+      case 'end':
+        playBell();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        safeSpeak(ex.blockKind === 'fortime' ? 'Time cap.' : 'Time.');
+        break;
+    }
+  }
+
+  function pauseBlock() {
+    const b = blockRef.current;
+    if (!b || b.pausedAt !== null) return;
+    clearTimeout(blockTickRef.current);
+    b.pausedAt = Date.now();
+    setBlockStatus('paused');
+  }
+
+  function resumeBlock() {
+    const b = blockRef.current;
+    if (!b || b.pausedAt === null) return;
+    b.pausedMs += Date.now() - b.pausedAt;
+    b.pausedAt = null;
+    setBlockStatus('running');
+    blockTick();
+  }
+
+  function toggleBlock() {
+    if (timerMode === 'countdown' && phaseRef.current) {
+      if (timerRunning) pausePhase(); else resumePhase();
+      return;
+    }
+    if (blockStatus === 'running') pauseBlock();
+    else if (blockStatus === 'paused') resumeBlock();
+    else if (blockStatus === 'idle') startPhase(LEAD_IN_SEC, 'countdown', startBlock);
+  }
+
+  function addRound(delta: 1 | -1) {
+    const b = blockRef.current;
+    if (!b) return;
+    const n = Math.max(0, blockRoundsRef.current + delta);
+    blockRoundsRef.current = n;
+    setBlockRounds(n);
+    Haptics.impactAsync(delta > 0 ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Light);
+    if (delta < 0) return;
+    const target = b.ex.blockKind === 'fortime' ? (b.ex.rounds || 1) : 0;
+    if (target && n >= target) { finishBlock('done'); return; }
+    safeSpeak(`Round ${n}.`);
+  }
+
+  // reason: 'end' = clock/cap ran out, 'done' = For Time finished,
+  // 'stopped' = ended early by the athlete.
+  function finishBlock(reason: 'end' | 'done' | 'stopped') {
+    const b = blockRef.current;
+    if (!b) return;
+    const sec = Math.min(Math.floor(blockElapsedMs() / 1000), b.cfg.totalSec ?? Infinity);
+    const ex = b.ex;
+    stopBlock();
+    setBlockSec(sec);
+    setBlockStatus('finished');
+    const base = { kind: ex.blockKind, key: blockKeyOf(ex), label: ex.displayName || ex.name } as const;
+    let result: BlockResult;
+    if (ex.blockKind === 'emom') {
+      const planned = Math.round((ex.totalSec || 0) / (ex.intervalSec || 60));
+      const done = reason === 'end' ? planned : Math.floor(sec / (ex.intervalSec || 60));
+      result = { ...base, intervalsDone: done, intervalsPlanned: planned };
+    } else if (ex.blockKind === 'amrap') {
+      result = { ...base, rounds: blockRoundsRef.current, extraReps: 0 };
+    } else {
+      const target = ex.rounds || 1;
+      result = reason === 'done'
+        ? { ...base, timeSec: sec, rounds: target, capped: false }
+        : { ...base, timeSec: sec, rounds: blockRoundsRef.current, capped: true };
+      if (reason === 'done') safeSpeak('Done. Nice work.');
+    }
+    setExtraRepsInput('0');
+    setPendingResult(result);
+  }
+
+  function confirmEndBlockEarly() {
+    pauseBlock();
+    Alert.alert('End this block now?', 'What you have done so far is saved as your result.', [
+      { text: 'Keep going', style: 'cancel', onPress: () => resumeBlock() },
+      { text: 'End block', onPress: () => finishBlock('stopped') },
+    ]);
+  }
+
+  function saveBlockResult() {
+    if (!pendingResult) return;
+    const result = pendingResult.kind === 'amrap'
+      ? { ...pendingResult, extraReps: Math.max(0, parseInt(extraRepsInput, 10) || 0) }
+      : pendingResult;
+    const idx = liveRef.current.exIdx;
+    const next = { ...liveRef.current.blockResults, [idx]: result };
+    liveRef.current.blockResults = next;
+    setBlockResults(next);
+    setPendingResult(null);
+    advanceExercise('done', liveRef.current.exerciseList[idx]?.restAfter || 0);
+  }
+
   function toggleTimer() {
     if (timerRunning) pausePhase();
     else if (phaseRef.current) resumePhase();
@@ -353,6 +558,7 @@ export default function WorkoutPlayerScreen() {
 
   function skipExercise() {
     stopPhase();
+    stopBlock();
     setTimerRunning(false);
     stopSpeech();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -378,8 +584,34 @@ export default function WorkoutPlayerScreen() {
   }
 
   function buildSessionLog(status: WorkoutLog['status']): WorkoutLog {
-    const { exerciseList: list, allSetLogs: sets, exerciseOutcome: outcomes, swappedFrom: swaps, elapsed: secs } = liveRef.current;
+    const { exerciseList: list, allSetLogs: sets, exerciseOutcome: outcomes, swappedFrom: swaps, elapsed: secs, blockResults: results } = liveRef.current;
     const exercises = list.map((ex, i): ExerciseLog => {
+      if (ex.type === 'block') {
+        const outcome = outcomes[i];
+        // Turn the result into performed set rows so weekly/monthly volume
+        // still counts the work done inside the block.
+        const r = results[i];
+        const mvs: any[] = ex.movements || [];
+        const done: any[] = !r ? [] :
+          r.kind === 'emom' ? Array.from({ length: r.intervalsDone || 0 }, (_, m) => mvs[m % mvs.length]) :
+          Array.from({ length: r.rounds || 0 }).flatMap(() => mvs);
+        const blockSets = done
+          .filter(m => m && m.type !== 'time')
+          .map((m, n) => ({
+            setNumber: n + 1, reps: m.reps || 0, weight: m.weight || 0,
+            plannedReps: m.reps || 0, plannedWeight: m.weight || 0,
+            completed: true, skipped: false, timestamp: '',
+          }));
+        return {
+          exerciseName: ex.displayName || ex.name,
+          type: 'block',
+          sets: blockSets,
+          plannedSets: 0,
+          completed: outcome === 'done' && !!results[i],
+          skipped: outcome === 'skipped',
+          ...(results[i] ? { result: results[i] } : {}),
+        };
+      }
       const entries = sets[i] || [];
       const outcome = outcomes[i];
       const setLogs = entries.map((e: any, n: number) => ({
@@ -414,6 +646,7 @@ export default function WorkoutPlayerScreen() {
       plannedExerciseCount: list.length,
       completedExerciseCount: exercises.filter(e => e.completed).length,
       status,
+      ...(workout.travel ? { travel: true } : {}),
     };
   }
 
@@ -428,7 +661,8 @@ export default function WorkoutPlayerScreen() {
     } catch (e) {
       console.warn('saveWorkoutLog failed:', e);
     }
-    const setsDone = log.exercises.reduce((n, ex) => n + ex.sets.filter(isPerformed).length, 0);
+    // Block rows are derived from the round count, not logged sets — keep them out of "Sets x / y".
+    const setsDone = log.exercises.reduce((n, ex) => n + (ex.type === 'block' ? 0 : ex.sets.filter(isPerformed).length), 0);
     const setsPlanned = log.exercises.reduce((n, ex) => n + ex.plannedSets, 0);
     const volume = log.exercises.reduce((v, ex) =>
       v + ex.sets.filter(isPerformed).reduce((sv, st) => sv + st.reps * st.weight, 0), 0);
@@ -455,7 +689,7 @@ export default function WorkoutPlayerScreen() {
   // Leaving mid-workout must never silently discard what was logged.
   function confirmExit(onDiscard: () => void) {
     const { allSetLogs: sets, exerciseOutcome: outcomes } = liveRef.current;
-    const anyProgress = Object.keys(outcomes).length > 0 ||
+    const anyProgress = Object.keys(outcomes).length > 0 || !!blockRef.current ||
       Object.values(sets).some(entries => entries.some((e: any) => e.completed));
     if (!anyProgress) {
       allowLeaveRef.current = true;
@@ -516,7 +750,146 @@ export default function WorkoutPlayerScreen() {
 
   const elapsedStr = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
   const isResting = timerMode === 'rest';
-  const phaseColor = isResting ? C.rest : PHASE_COLOR[currentEx?.phase || 'work'];
+  const isBlock = currentEx?.type === 'block';
+  const phaseColor = isResting ? C.rest : isBlock ? C.block : PHASE_COLOR[currentEx?.phase || 'work'];
+
+  // ── Block view (EMOM / AMRAP / For Time) ─────────────────────────────────────
+  function renderBlock() {
+    const ex = currentEx;
+    const cfg = blockCfg(ex);
+    const d = displayAt(cfg, blockSec);
+    const kind: string = ex.blockKind;
+    const inLeadIn = timerMode === 'countdown' && countdown !== null;
+    const gettingReady = timerMode === 'countdown';
+    const started = blockStatus !== 'idle';
+    const mvs: any[] = ex.movements || [];
+    const curMv = kind === 'emom' ? mvs[d.intervalIdx % mvs.length] : null;
+    const nextMv = kind === 'emom' && d.intervalIdx + 1 < d.intervals ? mvs[(d.intervalIdx + 1) % mvs.length] : null;
+    const last = blockHistory[blockHistory.length - 1]?.result;
+    const best = blockHistory.reduce<BlockResult | null>((b, h) => (!b || compareResults(h.result, b) > 0 ? h.result : b), null);
+    const minuteFrac = kind === 'emom' ? 1 - d.mainSec / cfg.intervalSec : cfg.totalSec ? Math.min(1, blockSec / cfg.totalSec) : 0;
+    const btnLabel = gettingReady
+      ? (timerRunning ? '⏸  Pause' : '▶  Resume')
+      : blockStatus === 'running' ? '⏸  Pause' : blockStatus === 'paused' ? '▶  Resume' : '▶  Start';
+
+    return (
+      <View>
+        <View style={[s.timerBlock, { paddingVertical: 12 }]}>
+          {kind === 'emom' && started && (
+            <View style={s.intervalRow}>
+              <View style={[s.intervalPill, { backgroundColor: C.block + '33' }]}>
+                <Text style={[s.intervalPillText, { color: C.block }]}>MINUTE</Text>
+              </View>
+              <Text style={s.intervalCount}>{d.intervalIdx + 1} / {d.intervals}</Text>
+            </View>
+          )}
+
+          {inLeadIn ? (
+            <Text style={[s.timerNum, { color: C.lime, fontSize: 100 }]}>{countdown}</Text>
+          ) : (
+            <Text style={[s.timerNum, (countdown === null && blockStatus === 'running' && d.totalLeft !== null && (kind === 'emom' ? d.mainSec : d.totalLeft) <= 3) && { color: C.lime }]}>
+              {started ? fmtClock(d.mainSec) : fmtClock(kind === 'emom' ? cfg.intervalSec : kind === 'amrap' ? (cfg.totalSec || 0) : 0)}
+            </Text>
+          )}
+          <Text style={s.timerLabel}>
+            {gettingReady ? 'GET READY'
+              : blockStatus === 'paused' ? 'PAUSED'
+              : blockStatus === 'finished' ? 'FINISHED'
+              : kind === 'emom' ? 'LEFT THIS MINUTE'
+              : kind === 'amrap' ? 'REMAINING'
+              : cfg.totalSec ? `ELAPSED  ·  CAP ${fmtClock(cfg.totalSec)}` : 'ELAPSED'}
+          </Text>
+
+          {started && (
+            <View style={s.blockBar}>
+              <View style={[s.blockBarFill, { width: `${Math.round(minuteFrac * 100)}%` }]} />
+            </View>
+          )}
+          {kind === 'emom' && started && d.totalLeft !== null && (
+            <Text style={s.blockSub}>Total left {fmtClock(d.totalLeft)}</Text>
+          )}
+
+          {blockStatus !== 'finished' && (
+            <TouchableOpacity style={[s.timerBtn, { backgroundColor: C.block, marginTop: 14 }]} onPress={toggleBlock}>
+              <Text style={s.timerBtnText}>{btnLabel}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* EMOM: what to do this minute */}
+        {kind === 'emom' && curMv && (
+          <View style={s.blockNow}>
+            <Text style={s.blockNowLabel}>{started ? 'THIS MINUTE' : 'MINUTE 1'}</Text>
+            <Text style={s.blockNowName}>{curMv.name}</Text>
+            <Text style={s.blockNowMeta}>{movementSummary(curMv)}</Text>
+            {nextMv && <Text style={s.blockNext}>Next minute: {nextMv.name} · {movementSummary(nextMv)}</Text>}
+          </View>
+        )}
+
+        {/* AMRAP / For Time: round counter */}
+        {(kind === 'amrap' || (kind === 'fortime' && (ex.rounds || 1) > 1)) && (
+          <View style={s.roundBox}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.blockNowLabel}>{kind === 'amrap' ? 'ROUNDS DONE' : `ROUNDS DONE  ·  OF ${ex.rounds}`}</Text>
+              <Text style={s.roundNum}>{blockRounds}</Text>
+            </View>
+            <TouchableOpacity
+              style={[s.roundMinus, !started && { opacity: 0.3 }]}
+              disabled={!started || blockStatus === 'finished'}
+              onPress={() => addRound(-1)}
+            >
+              <Text style={s.roundMinusText}>−</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.roundPlus, (blockStatus !== 'running') && { opacity: 0.35 }]}
+              disabled={blockStatus !== 'running'}
+              onPress={() => addRound(1)}
+            >
+              <Text style={s.roundPlusText}>+1 ROUND</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {kind === 'fortime' && (blockStatus === 'running' || blockStatus === 'paused') && (
+          <TouchableOpacity style={s.doneBtn} onPress={() => finishBlock('done')}>
+            <Text style={s.doneBtnText}>DONE ✓  Stop the clock</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* The round / rotation */}
+        <View style={s.setLogBlock}>
+          <Text style={s.setLogTitle}>
+            {kind === 'emom' ? 'Rotation — one movement per minute' : kind === 'amrap' ? 'One round' : (ex.rounds || 1) > 1 ? `One round (×${ex.rounds})` : 'The work'}
+          </Text>
+          {mvs.map((m: any, i: number) => {
+            const active = kind === 'emom' && started && i === d.intervalIdx % mvs.length;
+            return (
+              <View key={i} style={[s.setRow, active && { backgroundColor: C.block + '18' }]}>
+                <Text style={[s.setLabel, { width: 28, color: active ? C.block : C.textDim }]}>{kind === 'emom' ? `M${i + 1}` : `${i + 1}.`}</Text>
+                <Text style={[s.mvName, active && { color: C.text }]}>{m.name}</Text>
+                <Text style={s.mvMeta}>{movementSummary(m)}</Text>
+              </View>
+            );
+          })}
+        </View>
+
+        {(last || best) && (
+          <View style={s.restHint}>
+            <Text style={s.restHintText}>
+              {last ? `Last time: ${formatBlockResult(last)}` : ''}
+              {best && blockHistory.length > 1 ? `   ·   Best: ${formatBlockResult(best)}` : ''}
+            </Text>
+          </View>
+        )}
+
+        {(blockStatus === 'running' || blockStatus === 'paused') && (
+          <TouchableOpacity style={{ alignItems: 'center', padding: 14 }} onPress={confirmEndBlockEarly}>
+            <Text style={{ color: C.textMid, fontSize: 13 }}>End block early</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  }
 
   // ── LIST VIEW ────────────────────────────────────────────────────────────────
   if (view === 'list') {
@@ -548,12 +921,16 @@ export default function WorkoutPlayerScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={[s.exRowName, isDone && { color: C.textDim }]}>{ex.displayName || ex.name}</Text>
                       <Text style={s.exRowMeta}>
-                        {ex.type === 'sets'
+                        {ex.type === 'block'
+                          ? `${BLOCK_LABEL[ex.blockKind]} · ${ex.blockKind === 'fortime'
+                              ? `${ex.rounds > 1 ? `${ex.rounds} rounds` : 'for time'}${ex.totalSec ? ` · ${Math.round(ex.totalSec / 60)} min cap` : ''}`
+                              : `${Math.round((ex.totalSec || 0) / 60)} min`} · ${ex.movements.length} movements`
+                          : ex.type === 'sets'
                           ? `${ex.sets} sets × ${ex.reps} reps${ex.weight > 0 ? ` · ${ex.weight} lb` : ''}${ex.sides ? ' · each side' : ''}`
                           : def
                             ? `${def.isTabata ? 'Tabata · ' : ''}${def.rounds} rounds · ${def.workSec}s on / ${def.restSec}s off`
                             : `${Math.floor((ex.duration||0)/60)}:${String((ex.duration||0)%60).padStart(2,'0')}${ex.sides ? ' each side' : ''}`}
-                        {ex.restAfter > 0 && !def ? ` · ${ex.restAfter}s rest` : ''}
+                        {ex.restAfter > 0 && !def && ex.type !== 'block' ? ` · ${ex.restAfter}s rest` : ''}
                         {ex.roundLabel ? ` · ${ex.roundLabel}` : ''}
                       </Text>
                     </View>
@@ -601,6 +978,7 @@ export default function WorkoutPlayerScreen() {
         <View style={[s.phaseBadge, { backgroundColor: phaseColor + '22', borderColor: phaseColor + '55' }]}>
           <Text style={[s.phaseBadgeText, { color: phaseColor }]}>
             {isResting ? 'REST' :
+             isBlock ? BLOCK_LABEL[currentEx.blockKind] :
              currentEx.sides && currentEx.type === 'time' ? `${currentEx.sides[sideIdx].toUpperCase()} SIDE` :
              currentEx.phase === 'warmup' ? 'Warm-up' :
              currentEx.phase === 'cooldown' ? 'Cool-down' : 'Work'}
@@ -612,7 +990,7 @@ export default function WorkoutPlayerScreen() {
         {!isResting && <View style={s.cueBox}><Text style={s.cueText}>{currentEx.cue}</Text></View>}
 
         {/* Timer display */}
-        {(currentEx.type === 'time' || isResting) ? (
+        {isBlock && !isResting ? renderBlock() : (currentEx.type === 'time' || isResting) ? (
           <View style={s.timerBlock}>
             {/* Tabata / Interval counter */}
             {intDef && !isResting && timerMode !== 'countdown' && (
@@ -720,9 +1098,11 @@ export default function WorkoutPlayerScreen() {
       ) : (
         // Skip controls live here, in one-handed thumb reach mid-set.
         <View style={s.controls}>
-          <TouchableOpacity style={s.swapBtn} onPress={() => setShowSwap(true)}>
-            <Text style={s.swapBtnText}>⟳  Swap</Text>
-          </TouchableOpacity>
+          {!isBlock && (
+            <TouchableOpacity style={s.swapBtn} onPress={() => setShowSwap(true)}>
+              <Text style={s.swapBtnText}>⟳  Swap</Text>
+            </TouchableOpacity>
+          )}
           {currentEx.type === 'sets' && setEntries.some((e: any) => !e.completed) && (
             <TouchableOpacity
               style={s.skipBtn}
@@ -736,6 +1116,49 @@ export default function WorkoutPlayerScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Block result */}
+      <Modal visible={!!pendingResult} transparent animationType="slide" onRequestClose={saveBlockResult}>
+        <View style={s.modalOverlay}>
+          <View style={s.modalSheet}>
+            <Text style={s.modalTitle}>{pendingResult ? BLOCK_LABEL[pendingResult.kind] : ''} result</Text>
+            <Text style={s.modalSubtitle}>{pendingResult?.label}</Text>
+            {pendingResult && (
+              <Text style={s.resultBig}>
+                {formatBlockResult(pendingResult.kind === 'amrap'
+                  ? { ...pendingResult, extraReps: parseInt(extraRepsInput, 10) || 0 }
+                  : pendingResult)}
+              </Text>
+            )}
+            {pendingResult?.kind === 'amrap' && (
+              <View style={s.extraRow}>
+                <Text style={s.voiceLabelish}>Extra reps into the next round</Text>
+                <TouchableOpacity style={s.stepBtn} onPress={() => setExtraRepsInput(v => String(Math.max(0, (parseInt(v, 10) || 0) - 1)))}>
+                  <Text style={s.stepBtnText}>−</Text>
+                </TouchableOpacity>
+                <TextInput
+                  style={[s.setInput, { width: 56 }]}
+                  value={extraRepsInput}
+                  onChangeText={setExtraRepsInput}
+                  keyboardType="number-pad"
+                  selectTextOnFocus
+                />
+                <TouchableOpacity style={s.stepBtn} onPress={() => setExtraRepsInput(v => String((parseInt(v, 10) || 0) + 1))}>
+                  <Text style={s.stepBtnText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {blockHistory.length > 0 && pendingResult && (
+              <Text style={s.modalSubtitle}>
+                Last time: {formatBlockResult(blockHistory[blockHistory.length - 1].result)}
+              </Text>
+            )}
+            <TouchableOpacity style={[s.nextBtn, { backgroundColor: C.lime, flex: 0, marginTop: 8 }]} onPress={saveBlockResult}>
+              <Text style={s.nextBtnText}>Save & Continue ▶</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Swap modal */}
       <Modal visible={showSwap} transparent animationType="slide" onRequestClose={() => setShowSwap(false)}>
@@ -826,6 +1249,29 @@ const s = StyleSheet.create({
   subName: { fontSize: 15, fontWeight: '700', color: C.text, marginBottom: 4 },
   subCue: { fontSize: 12, color: C.textMid, lineHeight: 18, marginBottom: 6 },
   subMeta: { fontSize: 11, color: C.lime, fontWeight: '600' },
+  blockBar: { height: 6, alignSelf: 'stretch', backgroundColor: C.elevated, borderRadius: 3, marginTop: 4, overflow: 'hidden' },
+  blockBarFill: { height: 6, backgroundColor: C.block, borderRadius: 3 },
+  blockSub: { fontSize: 13, color: C.textMid, marginTop: 8, fontWeight: '600' },
+  blockNow: { backgroundColor: C.block + '18', borderColor: C.block + '66', borderWidth: 1, borderRadius: 14, padding: 16, marginBottom: 12 },
+  blockNowLabel: { fontSize: 10, fontWeight: '800', color: C.block, letterSpacing: 1.2, marginBottom: 4 },
+  blockNowName: { fontSize: 24, fontWeight: '800', color: C.text },
+  blockNowMeta: { fontSize: 16, fontWeight: '700', color: C.block, marginTop: 2 },
+  blockNext: { fontSize: 12, color: C.textMid, marginTop: 10 },
+  roundBox: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.card, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: C.border, marginBottom: 12 },
+  roundNum: { fontSize: 44, fontWeight: '800', color: C.text },
+  roundMinus: { width: 52, height: 64, borderRadius: 12, borderWidth: 1, borderColor: C.borderLight, alignItems: 'center', justifyContent: 'center' },
+  roundMinusText: { fontSize: 28, color: C.textMid, fontWeight: '700' },
+  roundPlus: { height: 64, paddingHorizontal: 18, borderRadius: 12, backgroundColor: C.block, alignItems: 'center', justifyContent: 'center' },
+  roundPlusText: { fontSize: 17, color: C.bg, fontWeight: '900' },
+  doneBtn: { backgroundColor: C.success, borderRadius: 14, paddingVertical: 18, alignItems: 'center', marginBottom: 12 },
+  doneBtnText: { fontSize: 17, fontWeight: '900', color: C.bg },
+  mvName: { flex: 1, fontSize: 14, fontWeight: '600', color: C.textMid },
+  mvMeta: { fontSize: 13, color: C.textMid, fontWeight: '600' },
+  resultBig: { fontSize: 34, fontWeight: '800', color: C.lime, marginVertical: 12 },
+  extraRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  voiceLabelish: { flex: 1, fontSize: 13, color: C.textMid },
+  stepBtn: { width: 40, height: 40, borderRadius: 8, borderWidth: 1, borderColor: C.borderLight, alignItems: 'center', justifyContent: 'center' },
+  stepBtnText: { fontSize: 20, color: C.text, fontWeight: '700' },
   modalCancel: { padding: 14, alignItems: 'center', marginTop: 4 },
   modalCancelText: { fontSize: 15, color: C.textMid },
 });

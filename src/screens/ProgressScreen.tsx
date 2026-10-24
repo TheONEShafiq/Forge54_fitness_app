@@ -6,7 +6,9 @@ import React, { useState, useCallback } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView, Alert } from 'react-native';
 import { colors, spacing, radius } from '../theme';
-import { getWeeklyStats, getMonthlyStats, getExerciseProgression, getGarminToken, getAllLogs, isPerformed, logVolume } from '../store/workoutStore';
+import { getWeeklyStats, getMonthlyStats, getExerciseProgression, getGarminToken, getAllLogs, isPerformed, logVolume, getAllBlockHistories } from '../store/workoutStore';
+import { formatBlockResult, compareResults } from '../utils/blockTimer';
+import type { BlockResult } from '../utils/blockTimer';
 import { connectGarminAccount, getGarminClientId } from '../utils/garminSync';
 
 const MAX_TRACKED_EXERCISES = 4;
@@ -31,6 +33,7 @@ export default function ProgressScreen() {
   const [monthStats, setMonthStats] = useState<any>(null);
   const [exProgress, setExProgress] = useState<Record<string, any[]>>({});
   const [garminConnected, setGarminConnected] = useState(false);
+  const [blockHist, setBlockHist] = useState<Record<string, { date: string; result: BlockResult }[]>>({});
   const [garminConnecting, setGarminConnecting] = useState(false);
 
   // Reload on focus so a session saved moments ago shows up without a restart.
@@ -39,6 +42,7 @@ export default function ProgressScreen() {
     getWeeklyStats(1).then(setLastWeekStats);
     getMonthlyStats().then(setMonthStats);
     getGarminToken().then(token => setGarminConnected(!!token));
+    getAllBlockHistories().then(setBlockHist).catch(() => {});
     // Track the weighted exercises that show up most often in real logs.
     getAllLogs().then(all => {
       const freq: Record<string, number> = {};
@@ -198,6 +202,30 @@ export default function ProgressScreen() {
                   <Text style={styles.exRange}>
                     {data[0]} → <Text style={{ color: colors.success, fontWeight: '700' }}>{data[data.length - 1]} lbs</Text>
                   </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* TIMED BLOCKS — EMOM / AMRAP / For Time results (Exercises tab) */}
+        {activeTab === 2 && Object.keys(blockHist).length > 0 && (
+          <View style={styles.tabContent}>
+            <Text style={styles.sectionLabel}>EMOM · AMRAP · FOR TIME</Text>
+            {Object.entries(blockHist).map(([key, hist]) => {
+              const recent = hist.slice(-5);
+              const best = hist.reduce<BlockResult | null>((b, h) => (!b || compareResults(h.result, b) > 0 ? h.result : b), null);
+              return (
+                <View key={key} style={styles.exChart}>
+                  <Text style={styles.exChartName}>{hist[hist.length - 1].result.label}</Text>
+                  {recent.map((h, i) => (
+                    <View key={i} style={styles.garminRow}>
+                      <Text style={styles.garminMetric}>{h.date.slice(0, 10)}</Text>
+                      <Text style={[styles.garminValue, h.result === best && { color: colors.success }]}>
+                        {formatBlockResult(h.result)}{h.result === best && hist.length > 1 ? '  ★' : ''}
+                      </Text>
+                    </View>
+                  ))}
                 </View>
               );
             })}

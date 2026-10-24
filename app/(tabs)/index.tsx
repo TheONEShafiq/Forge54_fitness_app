@@ -8,8 +8,11 @@ import { colors, spacing, radius } from '../../src/theme';
 import { resolveAllWorkouts, getActiveWeeks } from '../../src/utils/workoutResolver';
 import {
   getProgramLength, ProgramLength, shouldPromptForProfile, getProgramStartDate, fromDateKey,
+  getTravel, TravelState,
 } from '../../src/store/settingsStore';
 import { getAllLogs, WorkoutLog } from '../../src/store/workoutStore';
+import { travelWorkoutsFor, pickTravelWorkout, TRAVEL_SETUPS } from '../../src/utils/travelLibrary';
+import { confirmEndTravel } from '../../src/utils/travelActions';
 
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
@@ -64,11 +67,23 @@ export default function HomeScreen() {
   const [programLength, setProgramLength] = useState<ProgramLength>(6);
   const [doneStatus, setDoneStatus] = useState<Record<string, DoneStatus>>({});
   const [startDate, setStartDate] = useState<Date | null>(null);
+  const [travel, setTravel] = useState<TravelState | null>(null);
+  const [lastDone, setLastDone] = useState<Record<string, number>>({});
   const autoExpandedRef = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
       getProgramLength().then(setProgramLength);
+      getTravel().then(setTravel);
+      getAllLogs().then(all => {
+        const m: Record<string, number> = {};
+        for (const l of Object.values(all)) {
+          if (l.status === 'skipped') continue;
+          const t = new Date(l.completedAt).getTime();
+          if (!m[l.id] || t > m[l.id]) m[l.id] = t;
+        }
+        setLastDone(m);
+      });
       getProgramStartDate().then(key => {
         const start = fromDateKey(key);
         setStartDate(start);
@@ -95,6 +110,11 @@ export default function HomeScreen() {
     : undefined;
   const doneCount = allWorkouts.filter((w: any) => doneStatus[w.id] === 'complete').length;
   const startLabel = startDate?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const traveling = !!travel?.active;
+  const travelPick = traveling ? pickTravelWorkout(travelWorkoutsFor(travel!.setup, travel!.packed).fits, lastDone) : null;
+  const travelSetupLabel = TRAVEL_SETUPS.find(o => o.value === travel?.setup)?.label;
+
+  function reloadTravel() { getTravel().then(setTravel); getProgramStartDate().then(k => setStartDate(fromDateKey(k))); }
 
   return (
     <SafeAreaView style={s.container}>
@@ -112,8 +132,44 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {/* Travel card — replaces Today while traveling */}
+        {traveling && (
+          <View style={[s.todayCard, { borderColor: colors.accent + '88' }]}>
+            <View style={s.todayCardTop}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.todayLabel}>✈  TRAVEL MODE  ·  {travelSetupLabel?.toUpperCase()}</Text>
+                {travelPick ? (
+                  <>
+                    <Text style={s.todayTitle}>{travelPick.title}</Text>
+                    <Text style={s.todayMeta}>{travelPick.duration} min  ·  {travelPick.equipment.join(', ')}</Text>
+                    <Text style={s.todayEquip} numberOfLines={2}>{travelPick.summary}</Text>
+                  </>
+                ) : (
+                  <Text style={s.todayMeta}>No travel workout fits this setup yet.</Text>
+                )}
+              </View>
+            </View>
+            {travelPick && (
+              <TouchableOpacity
+                style={s.startBtn}
+                onPress={() => router.push({ pathname: '/player', params: { workoutId: travelPick.id } })}
+              >
+                <Text style={s.startBtnText}>Start Travel Workout  ▶</Text>
+              </TouchableOpacity>
+            )}
+            <View style={s.travelLinks}>
+              <TouchableOpacity onPress={() => router.push('/travel')}>
+                <Text style={s.travelLink}>Change setup / pick another</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => confirmEndTravel(reloadTravel)}>
+                <Text style={[s.travelLink, { color: colors.textMuted }]}>I’m back</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* Today card */}
-        {todayWorkout ? (
+        {traveling ? null : todayWorkout ? (
           <View style={s.todayCard}>
             <View style={s.todayCardTop}>
               <View style={{ flex: 1 }}>
@@ -168,6 +224,13 @@ export default function HomeScreen() {
             <Text style={s.restSub}>No workout today. Recovery is training too.</Text>
           </View>
         ) : null}
+
+        {!traveling && (
+          <TouchableOpacity style={s.travelEntry} onPress={() => router.push('/travel')} activeOpacity={0.7}>
+            <Text style={s.travelEntryText}>✈  Traveling? Hotel & bodyweight workouts</Text>
+            <Text style={s.woArrow}>▶</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Program strip */}
         <View style={s.programHeader}>
@@ -279,5 +342,9 @@ const s = StyleSheet.create({
   woName: { fontSize: 13, fontWeight: '600', color: colors.text },
   woMeta: { fontSize: 11, color: colors.textMuted, marginTop: 1 },
   benchTag: { fontSize: 14, marginRight: 6 },
+  travelLinks: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.md },
+  travelLink: { fontSize: 13, fontWeight: '700', color: colors.accent },
+  travelEntry: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.bgCard, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: spacing.md, marginBottom: spacing.lg },
+  travelEntryText: { fontSize: 13, fontWeight: '700', color: colors.text },
   woArrow: { color: colors.accent, fontSize: 13 },
 });
