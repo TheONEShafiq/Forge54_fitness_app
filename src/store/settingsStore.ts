@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAllLogs } from './workoutStore';
+import type { TravelSetup, TravelGear } from '../utils/travelLibrary';
 
 export type ProgramLength = 4 | 5 | 6;
 
@@ -159,4 +160,63 @@ export async function markProfilePrompted(): Promise<void> {
 export async function getGenerationProfile() {
   const [profile, equipment, programLengthWeeks] = await Promise.all([getProfile(), getEquipment(), getProgramLength()]);
   return { profile, equipment, programLengthWeeks };
+}
+
+// ── Travel mode ───────────────────────────────────────────────────────────────
+// While traveling, Home swaps today's program workout for the travel library
+// (src/utils/travelLibrary.ts). The program calendar keeps running; ending
+// travel offers to push the start date back by the whole weeks you were away,
+// so you resume where you left off instead of skipping ahead.
+export interface TravelState {
+  active: boolean;
+  setup: TravelSetup;
+  packed: TravelGear[];
+  // Local date ("YYYY-MM-DD") travel mode was switched on.
+  since: string | null;
+}
+
+const TRAVEL_KEY = 'forge_travel';
+const DEFAULT_TRAVEL: TravelState = { active: false, setup: 'room', packed: ['bands', 'jumprope'], since: null };
+
+export async function getTravel(): Promise<TravelState> {
+  try {
+    const raw = await AsyncStorage.getItem(TRAVEL_KEY);
+    return raw ? { ...DEFAULT_TRAVEL, ...JSON.parse(raw) } : DEFAULT_TRAVEL;
+  } catch {
+    return DEFAULT_TRAVEL;
+  }
+}
+
+export async function saveTravel(state: TravelState): Promise<void> {
+  await AsyncStorage.setItem(TRAVEL_KEY, JSON.stringify(state));
+}
+
+export async function startTravel(setup: TravelSetup, packed: TravelGear[]): Promise<TravelState> {
+  const state: TravelState = { active: true, setup, packed, since: toDateKey(new Date()) };
+  await saveTravel(state);
+  return state;
+}
+
+// Whole weeks between the day travel started and today (0 for a short trip).
+export function travelWeeksAway(since: string | null, today = new Date()): number {
+  if (!since) return 0;
+  const days = Math.round((new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime() - fromDateKey(since).getTime()) / 86400000);
+  return Math.max(0, Math.round(days / 7));
+}
+
+// Turns travel off. With `shiftProgram`, moves the program start date later
+// by the whole weeks away, so the current program week is the one you left.
+export async function endTravel(shiftProgram: boolean): Promise<TravelState> {
+  const current = await getTravel();
+  if (shiftProgram) {
+    const weeks = travelWeeksAway(current.since);
+    if (weeks > 0) {
+      const start = fromDateKey(await getProgramStartDate());
+      start.setDate(start.getDate() + weeks * 7);
+      await setProgramStartDate(toDateKey(start));
+    }
+  }
+  const state: TravelState = { ...current, active: false, since: null };
+  await saveTravel(state);
+  return state;
 }

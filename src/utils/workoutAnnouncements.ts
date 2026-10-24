@@ -4,6 +4,7 @@
 // two can never drift out of sync.
 import workoutData from '../../workouts.json';
 import { resolveWorkout } from './workoutResolver';
+import { TRAVEL_WORKOUTS } from './travelLibrary';
 
 // ── Rest durations by block type (seconds) — fallback only ───────────────────
 export const REST_BY_TYPE: Record<string, number> = {
@@ -134,6 +135,85 @@ function isCircuit(s: any, exercises: any[]): boolean {
   return counts[0] > 1 && counts.every(c => c === counts[0]);
 }
 
+// ── Timed blocks (EMOM / AMRAP / For Time) ───────────────────────────────────
+// A section flagged `emom`, `amrap` or `forTime` is one block in the player,
+// not a list of separate exercises: the whole section runs on one clock.
+//   emom:    duration (min) = number of minutes; movements rotate each minute
+//            (`emomIntervalSec` overrides the 60s interval)
+//   amrap:   duration (min) on the clock; rounds logged by tapping
+//   forTime: `rounds` to finish as fast as possible; optional `timeCap` (min)
+// `restAfter` (sec) on the section sets the rest before the next exercise.
+const EMOM_PREFIX = /^EMOM Min \d+\s*[—-]\s*/i;
+
+export function movementName(ex: any): string {
+  return (ex.name || '').replace(EMOM_PREFIX, '');
+}
+
+export function movementSummary(ex: any): string {
+  const sideNote = ex.sides ? ' each side' : '';
+  if (ex.type === 'time') {
+    const d = ex.duration || 0;
+    const t = d >= 60 ? `${Math.floor(d / 60)}:${String(d % 60).padStart(2, '0')}` : `${d}s`;
+    return `${t}${sideNote}`;
+  }
+  const w = ex.weight > 0 ? ` @ ${ex.weight} lb` : '';
+  return `${ex.reps || 0} reps${sideNote}${w}`;
+}
+
+export function blockKindOf(s: any): 'emom' | 'amrap' | 'fortime' | null {
+  if (s.emom) return 'emom';
+  if (s.amrap) return 'amrap';
+  if (s.forTime) return 'fortime';
+  return null;
+}
+
+function buildBlock(s: any, exercises: any[], fallbackRest: number): any | null {
+  const kind = blockKindOf(s);
+  if (!kind || !exercises.length) return null;
+  const movements = exercises.map(ex => ({ ...ex, name: movementName(ex) }));
+  const intervalSec = s.emomIntervalSec || 60;
+  let totalSec: number | null;
+  if (kind === 'emom') {
+    const minutes = s.duration || movements.length * Math.max(...movements.map(m => m.sets || 1));
+    totalSec = Math.round((minutes * 60) / intervalSec) * intervalSec;
+  } else if (kind === 'amrap') {
+    totalSec = (s.duration || 10) * 60;
+  } else {
+    totalSec = s.timeCap ? s.timeCap * 60 : null;
+  }
+  return {
+    name: s.name,
+    displayName: s.name,
+    type: 'block',
+    blockKind: kind,
+    phase: 'work',
+    sectionName: s.name,
+    totalSec,
+    intervalSec,
+    rounds: kind === 'fortime' ? (s.rounds || 1) : null,
+    movements,
+    cue: s.emomNote || s.amrapNote || s.forTimeNote || s.note || '',
+    restAfter: typeof s.restAfter === 'number' ? s.restAfter : Math.max(fallbackRest, 60),
+  };
+}
+
+// Spoken at the top of each EMOM minute.
+export function emomMinuteText(minute: number, of: number, ex: any): string {
+  const reps = ex.type === 'time' ? '' : ` ${ex.reps} reps.`;
+  return `Minute ${minute} of ${of}. ${ex.name}.${reps}`;
+}
+
+export function blockIntroText(b: any): string {
+  if (b.blockKind === 'emom') return `Every minute on the minute. ${Math.round(b.totalSec / 60)} minutes.`;
+  if (b.blockKind === 'amrap') return `AMRAP. ${Math.round(b.totalSec / 60)} minutes. As many rounds as possible.`;
+  const rounds = b.rounds > 1 ? `${b.rounds} rounds for time.` : 'For time.';
+  return b.totalSec ? `${rounds} ${Math.round(b.totalSec / 60)} minute cap.` : rounds;
+}
+
+export const BLOCK_PHRASES = [
+  'Go!', 'Halfway.', 'One minute left.', 'Time.', 'Time cap.', 'Done. Nice work.',
+];
+
 export function flattenExercises(workout: any) {
   const exs: any[] = [];
   workout.sections.forEach((s: any) => {
@@ -145,6 +225,9 @@ export function flattenExercises(workout: any) {
     const restFor = (ex: any) => typeof ex.rest === 'number' ? ex.rest : fallbackRestSec;
     const base = (ex: any) => ({ ...ex, phase, sectionName: s.name, displayName: ex.name });
     const exercises = mergeSidePairs(s.exercises);
+
+    const block = buildBlock(s, exercises, fallbackRestSec);
+    if (block) { exs.push(block); return; }
 
     if (isCircuit(s, exercises)) {
       const rounds = s.circuitRounds || exercises[0].sets || 1;
@@ -178,6 +261,7 @@ export function flattenExercises(workout: any) {
 
 // ── Pure text builder (no side effects — safe to call from a Node script) ────
 export function buildExerciseAnnouncementText(ex: any): string {
+  if (ex.type === 'block') return blockIntroText(ex);
   let text = ex.displayName || ex.name;
   if (ex.sides) text = ex.name + ', each side';
   if (ex.type === 'sets' && ex.sets && ex.reps) {
@@ -212,12 +296,22 @@ export function getAllAnnouncementTexts(): string[] {
 
   for (const wo of FIXED_PHRASES) texts.add(wo);
 
-  for (const week of (workoutData as any).weeks) {
-    for (const rawWorkout of week.workouts) {
-      const workout = resolveWorkout(rawWorkout);
-      for (const ex of flattenExercises(workout)) {
-        texts.add(buildExerciseAnnouncementText(ex));
-        if (ex.restAfter > 0) restSecondsSeen.add(ex.restAfter);
+  for (const p of BLOCK_PHRASES) texts.add(p);
+  for (let r = 1; r <= 30; r++) texts.add(`Round ${r}.`);
+
+  const allWorkouts = [
+    ...(workoutData as any).weeks.flatMap((w: any) => w.workouts.map((wo: any) => resolveWorkout(wo))),
+    ...TRAVEL_WORKOUTS,
+  ];
+  for (const workout of allWorkouts) {
+    for (const ex of flattenExercises(workout)) {
+      texts.add(buildExerciseAnnouncementText(ex));
+      if (ex.restAfter > 0) restSecondsSeen.add(ex.restAfter);
+      if (ex.type === 'block' && ex.blockKind === 'emom') {
+        const n = Math.round(ex.totalSec / ex.intervalSec);
+        for (let m = 0; m < n; m++) {
+          texts.add(emomMinuteText(m + 1, n, ex.movements[m % ex.movements.length]));
+        }
       }
     }
   }

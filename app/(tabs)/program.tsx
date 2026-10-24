@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } fr
 import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, spacing, radius } from '../../src/theme';
 import { resolveAllWorkouts, getActiveWeeks } from '../../src/utils/workoutResolver';
-import { getProgramLength, ProgramLength } from '../../src/store/settingsStore';
+import { getProgramLength, ProgramLength, getTravel } from '../../src/store/settingsStore';
 
 const PHASE_COLORS: Record<string, string> = {
   foundation: '#3b82f6', load: '#f97316', peak: '#ef4444', deload: '#a78bfa',
@@ -19,10 +19,12 @@ export default function ProgramScreen() {
   const router = useRouter();
   const [expandedWeek, setExpandedWeek] = useState<number>(1);
   const [programLength, setProgramLength] = useState<ProgramLength>(6);
+  const [traveling, setTraveling] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       getProgramLength().then(setProgramLength);
+      getTravel().then(t => setTraveling(t.active));
     }, [])
   );
 
@@ -32,8 +34,14 @@ export default function ProgramScreen() {
   return (
     <SafeAreaView style={s.container}>
       <View style={s.header}>
-        <Text style={s.title}>Forge Program</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={s.title}>Forge Program</Text>
+          <TouchableOpacity style={s.travelBtn} onPress={() => router.push('/travel')}>
+            <Text style={s.travelBtnText}>{traveling ? '✈ Traveling' : '✈ Travel'}</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={s.subtitle}>{programLength} weeks · 5 days/week · {allResolved.length} workouts</Text>
+        {traveling && <Text style={s.travelNote}>Travel mode is on — Home is showing hotel / bodyweight workouts.</Text>}
       </View>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: spacing.md }}>
         {activeWeeks.map((week: any) => {
@@ -92,6 +100,9 @@ const s = StyleSheet.create({
   header: { padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
   title: { fontSize: 24, fontWeight: '700', color: colors.text },
   subtitle: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  travelBtn: { borderWidth: 1, borderColor: colors.accent, borderRadius: radius.full, paddingHorizontal: 12, paddingVertical: 6 },
+  travelBtnText: { fontSize: 12, fontWeight: '700', color: colors.accent },
+  travelNote: { fontSize: 12, color: colors.accent, marginTop: 6 },
   weekCard: { backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, marginBottom: 12, overflow: 'hidden' },
   weekHeader: { flexDirection: 'row', alignItems: 'center', padding: spacing.md },
   weekTitle: { fontSize: 15, fontWeight: '700', color: colors.text },

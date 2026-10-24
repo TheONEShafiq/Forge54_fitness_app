@@ -19,6 +19,10 @@ import {
   getCloudVoiceEnabled, setCloudVoiceEnabled, getTtsApiKey, setTtsApiKey,
 } from '../../src/utils/ttsService';
 import { getGarminClientId, setGarminClientId } from '../../src/utils/garminSync';
+import { useRouter } from 'expo-router';
+import { getTravel, TravelState } from '../../src/store/settingsStore';
+import { TRAVEL_SETUPS } from '../../src/utils/travelLibrary';
+import { confirmEndTravel } from '../../src/utils/travelActions';
 
 const LENGTHS: ProgramLength[] = [4, 5, 6];
 
@@ -67,6 +71,8 @@ export default function SettingsScreen() {
   const [garminClientIdInput, setGarminClientIdInput] = useState('');
   const [hasGarminClientId, setHasGarminClientId] = useState(false);
   const [garminSavedJustNow, setGarminSavedJustNow] = useState(false);
+  const [travel, setTravel] = useState<TravelState | null>(null);
+  const router = useRouter();
 
   useFocusEffect(
     useCallback(() => {
@@ -79,6 +85,7 @@ export default function SettingsScreen() {
       getTtsApiKey().then(k => setHasStoredKey(!!k));
       getGarminClientId().then(k => setHasGarminClientId(!!k));
       setCrashLog(readCrashLog());
+      getTravel().then(setTravel);
     }, [])
   );
 
@@ -177,6 +184,35 @@ export default function SettingsScreen() {
             initial={profile}
             onSave={async p => { await saveProfile(p); setProfile(p); }}
           />
+        )}
+        <View style={{ height: spacing.lg }} />
+
+        {/* Travel */}
+        <Text style={s.sectionTitle}>Travel Mode</Text>
+        <Text style={s.sectionSub}>
+          Away from the home gym? Pick hotel gym, hotel room + packed gear, or bodyweight only,
+          and Home serves workouts that fit. Your program waits for you.
+        </Text>
+        <View style={s.voiceRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.voiceLabel}>{travel?.active ? '✈  Traveling' : 'Off'}</Text>
+            {travel?.active && (
+              <Text style={s.keyStatus}>
+                {TRAVEL_SETUPS.find(o => o.value === travel.setup)?.label} · since {travel.since}
+              </Text>
+            )}
+          </View>
+          <TouchableOpacity style={[s.addBtn, { paddingVertical: 8 }]} onPress={() => router.push('/travel')}>
+            <Text style={s.addBtnText}>{travel?.active ? 'Change' : 'Set up'}</Text>
+          </TouchableOpacity>
+        </View>
+        {travel?.active && (
+          <TouchableOpacity
+            style={[s.addBtn, { paddingVertical: 12, backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border }]}
+            onPress={() => confirmEndTravel(() => getTravel().then(setTravel).then(() => getProgramStartDate()).then(k => setProgramStart(fromDateKey(k))))}
+          >
+            <Text style={[s.addBtnText, { color: colors.text }]}>I’m back — end travel mode</Text>
+          </TouchableOpacity>
         )}
         <View style={{ height: spacing.lg }} />
 
