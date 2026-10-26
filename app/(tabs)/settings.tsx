@@ -23,6 +23,9 @@ import { useRouter } from 'expo-router';
 import { getTravel, TravelState } from '../../src/store/settingsStore';
 import { TRAVEL_SETUPS } from '../../src/utils/travelLibrary';
 import { confirmEndTravel } from '../../src/utils/travelActions';
+import { getPlan, isPlanStale, isGeneratedPlan } from '../../src/store/planStore';
+import { confirmRebuildPlan } from '../../src/utils/planActions';
+import type { Plan } from '../../src/utils/planGenerator';
 
 const LENGTHS: ProgramLength[] = [4, 5, 6];
 
@@ -40,6 +43,12 @@ function clearCrashLog() {
     const file = new File(Paths.document, 'last-crash.txt');
     if (file.exists) file.delete();
   } catch {}
+}
+
+// Profile fields the generator reads; gender is stored but doesn't change the plan.
+function profileChangesPlan(a: Profile | null | undefined, b: Profile): boolean {
+  if (!a) return true;
+  return a.age !== b.age || a.sessionMinutes !== b.sessionMinutes || !arraysEqual(a.workoutTypes, b.workoutTypes);
 }
 
 function arraysEqual(a: string[], b: string[]): boolean {
@@ -72,7 +81,15 @@ export default function SettingsScreen() {
   const [hasGarminClientId, setHasGarminClientId] = useState(false);
   const [garminSavedJustNow, setGarminSavedJustNow] = useState(false);
   const [travel, setTravel] = useState<TravelState | null>(null);
+  const [plan, setPlan] = useState<Plan | null>(null);
+  const [planStale, setPlanStale] = useState(false);
   const router = useRouter();
+
+  function reloadPlan() {
+    getPlan().then(setPlan);
+    isPlanStale().then(setPlanStale);
+    getProgramStartDate().then(k => setProgramStart(fromDateKey(k)));
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -86,6 +103,8 @@ export default function SettingsScreen() {
       getGarminClientId().then(k => setHasGarminClientId(!!k));
       setCrashLog(readCrashLog());
       getTravel().then(setTravel);
+      getPlan().then(setPlan);
+      isPlanStale().then(setPlanStale);
     }, [])
   );
 
@@ -118,6 +137,16 @@ export default function SettingsScreen() {
     setOriginalEquipment(equipment);
     setProgramSavedJustNow(true);
     setTimeout(() => setProgramSavedJustNow(false), 2000);
+    confirmRebuildPlan(reloadPlan, programLength !== originalProgramLength && !arraysEqual(equipment, originalEquipment)
+      ? 'Your program length and equipment changed'
+      : programLength !== originalProgramLength ? 'Your program length changed' : 'Your equipment changed');
+  }
+
+  async function handleSaveProfile(p: Profile) {
+    const before = profile;
+    await saveProfile(p);
+    setProfile(p);
+    if (profileChangesPlan(before, p)) confirmRebuildPlan(reloadPlan, 'Your profile changed');
   }
 
   // Saved immediately, like the toggles below — it isn't part of program generation.
@@ -182,7 +211,7 @@ export default function SettingsScreen() {
         {profile !== undefined && (
           <ProfileForm
             initial={profile}
-            onSave={async p => { await saveProfile(p); setProfile(p); }}
+            onSave={handleSaveProfile}
           />
         )}
         <View style={{ height: spacing.lg }} />
@@ -214,6 +243,26 @@ export default function SettingsScreen() {
             <Text style={[s.addBtnText, { color: colors.text }]}>I’m back — end travel mode</Text>
           </TouchableOpacity>
         )}
+        <View style={{ height: spacing.lg }} />
+
+        {/* Plan */}
+        <Text style={s.sectionTitle}>Your Plan</Text>
+        <Text style={s.sectionSub}>
+          {plan && isGeneratedPlan(plan)
+            ? `Built ${new Date(plan.createdAt!).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} from your profile, equipment and program length.`
+            : 'You’re on the original Forge54 program. Rebuild to get a plan made from your profile, equipment and program length.'}
+        </Text>
+        {planStale && (
+          <Text style={[s.keyStatus, { color: colors.warning, marginBottom: spacing.sm }]}>
+            Your settings changed since this plan was built.
+          </Text>
+        )}
+        <TouchableOpacity
+          style={[s.addBtn, { paddingVertical: 12 }, !planStale && { backgroundColor: colors.bgCard, borderWidth: 1, borderColor: colors.border }]}
+          onPress={() => confirmRebuildPlan(reloadPlan, planStale ? 'Your settings changed' : 'You asked for a fresh plan')}
+        >
+          <Text style={[s.addBtnText, !planStale && { color: colors.text }]}>Rebuild My Plan</Text>
+        </TouchableOpacity>
         <View style={{ height: spacing.lg }} />
 
         {/* Program length */}

@@ -2,8 +2,9 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, spacing, radius } from '../../src/theme';
-import { resolveAllWorkouts, getActiveWeeks } from '../../src/utils/workoutResolver';
-import { getProgramLength, ProgramLength, getTravel } from '../../src/store/settingsStore';
+import { getTravel } from '../../src/store/settingsStore';
+import { getPlan, planWorkouts, isGeneratedPlan } from '../../src/store/planStore';
+import type { Plan } from '../../src/utils/planGenerator';
 
 const PHASE_COLORS: Record<string, string> = {
   foundation: '#3b82f6', load: '#f97316', peak: '#ef4444', deload: '#a78bfa',
@@ -18,29 +19,30 @@ const TYPE_BADGES: Record<string, { label: string; color: string }> = {
 export default function ProgramScreen() {
   const router = useRouter();
   const [expandedWeek, setExpandedWeek] = useState<number>(1);
-  const [programLength, setProgramLength] = useState<ProgramLength>(6);
+  const [plan, setPlan] = useState<Plan | null>(null);
   const [traveling, setTraveling] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
-      getProgramLength().then(setProgramLength);
+      getPlan().then(setPlan);
       getTravel().then(t => setTraveling(t.active));
     }, [])
   );
 
-  const allResolved = resolveAllWorkouts(programLength);
-  const activeWeeks = getActiveWeeks(programLength);
+  const allResolved = plan ? planWorkouts(plan) : [];
+  const activeWeeks = plan?.weeks ?? [];
+  const daysPerWeek = activeWeeks[0]?.workouts.length ?? 5;
 
   return (
     <SafeAreaView style={s.container}>
       <View style={s.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={s.title}>Forge Program</Text>
+          <Text style={s.title}>{plan && isGeneratedPlan(plan) ? 'Your Program' : 'Forge Program'}</Text>
           <TouchableOpacity style={s.travelBtn} onPress={() => router.push('/travel')}>
             <Text style={s.travelBtnText}>{traveling ? '✈ Traveling' : '✈ Travel'}</Text>
           </TouchableOpacity>
         </View>
-        <Text style={s.subtitle}>{programLength} weeks · 5 days/week · {allResolved.length} workouts</Text>
+        <Text style={s.subtitle}>{activeWeeks.length} weeks · {daysPerWeek} days/week · {allResolved.length} workouts</Text>
         {traveling && <Text style={s.travelNote}>Travel mode is on — Home is showing hotel / bodyweight workouts.</Text>}
       </View>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: spacing.md }}>

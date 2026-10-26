@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StyleSheet, SafeAreaView, Modal, Alert
@@ -19,10 +19,8 @@ import {
   eventsBetween, displayAt, fmtClock, blockKey, formatBlockResult, compareResults,
 } from '../utils/blockTimer';
 import type { BlockConfig, BlockEvent, BlockResult } from '../utils/blockTimer';
-import { getTravelWorkout } from '../utils/travelLibrary';
 import type { IntervalDef } from '../utils/workoutAnnouncements';
-import { resolveWorkout } from '../utils/workoutResolver';
-import workoutData from '../../workouts.json';
+import { findWorkout } from '../store/planStore';
 
 const C = {
   bg: '#0a0a0a', card: '#141414', elevated: '#1c1c1c',
@@ -117,20 +115,17 @@ export default function WorkoutPlayerScreen() {
   const allowLeaveRef = useRef(false);
   const navigation = useNavigation();
 
-  const workout = useMemo(() => {
-    for (const week of workoutData.weeks) {
-      const found = (week.workouts as any[]).find((w: any) => w.id === workoutId);
-      // Weeks 3+ mostly reference a week-1/2 workout via inheritFrom and carry
-      // no `sections` of their own — resolveWorkout merges the base sections
-      // with this workout's progressionOverrides before we ever flatten them.
-      if (found) return resolveWorkout(found);
-    }
-    const travel = getTravelWorkout(workoutId);
-    if (travel) return travel;
-    return resolveWorkout(workoutData.weeks[0].workouts[0]);
+  // The user's plan lives in storage (generated per user), so the workout
+  // loads asynchronously: current plan, then travel, then older ids.
+  const [workout, setWorkout] = useState<any>(null);
+  useEffect(() => {
+    let alive = true;
+    findWorkout(workoutId).then(w => { if (alive) setWorkout(w); });
+    return () => { alive = false; };
   }, [workoutId]);
 
   useEffect(() => {
+    if (!workout) return;
     const exs = flattenExercises(workout);
     setExerciseList(exs);
     activateKeepAwakeAsync();
@@ -888,6 +883,16 @@ export default function WorkoutPlayerScreen() {
           </TouchableOpacity>
         )}
       </View>
+    );
+  }
+
+  if (!workout) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <View style={s.header}>
+          <TouchableOpacity onPress={() => { allowLeaveRef.current = true; router.back(); }}><Text style={s.backBtn}>✕  Close</Text></TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
