@@ -5,8 +5,10 @@ import { useRouter } from 'expo-router';
 import { colors, spacing } from '../src/theme';
 import ProfileForm from '../src/components/ProfileForm';
 import { saveProfile, markProfilePrompted } from '../src/store/settingsStore';
+import { rebuildPlan } from '../src/store/planStore';
 
-// Shown once, from Home, when no profile has been saved yet.
+// Shown once, from Home, when no profile has been saved yet. Saving builds the
+// user's first plan from the profile and their equipment.
 export default function OnboardingScreen() {
   const router = useRouter();
 
@@ -20,13 +22,13 @@ export default function OnboardingScreen() {
       <ScrollView contentContainerStyle={{ padding: spacing.md }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <Text style={s.title}>Set up your profile</Text>
         <Text style={s.sub}>
-          A few details so Forge can build your training program. Your home-gym equipment is
-          already set — you can change any of this later in Settings.
+          A few details so Forge can build your training program around you. It uses the
+          equipment list in Settings too — change any of it later and Forge rebuilds the plan.
         </Text>
         <ProfileForm
           initial={null}
           saveLabel="Save and continue"
-          onSave={async p => { await saveProfile(p); router.back(); }}
+          onSave={async p => { await saveProfile(p); await rebuildPlan(); router.back(); }}
         />
         <TouchableOpacity style={s.skip} onPress={notNow}>
           <Text style={s.skipText}>Not now</Text>

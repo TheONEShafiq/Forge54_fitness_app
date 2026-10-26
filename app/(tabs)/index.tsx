@@ -5,14 +5,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { colors, spacing, radius } from '../../src/theme';
-import { resolveAllWorkouts, getActiveWeeks } from '../../src/utils/workoutResolver';
 import {
-  getProgramLength, ProgramLength, shouldPromptForProfile, getProgramStartDate, fromDateKey,
+  shouldPromptForProfile, getProgramStartDate, fromDateKey,
   getTravel, TravelState,
 } from '../../src/store/settingsStore';
 import { getAllLogs, WorkoutLog } from '../../src/store/workoutStore';
-import { travelWorkoutsFor, pickTravelWorkout, TRAVEL_SETUPS } from '../../src/utils/travelLibrary';
+import { getPlan, planWorkouts, isPlanStale, getTravelWorkouts } from '../../src/store/planStore';
+import type { Plan } from '../../src/utils/planGenerator';
+import { pickTravelWorkout, TRAVEL_SETUPS } from '../../src/utils/travelLibrary';
 import { confirmEndTravel } from '../../src/utils/travelActions';
+import { confirmRebuildPlan } from '../../src/utils/planActions';
 
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
@@ -64,17 +66,24 @@ function fmtDuration(d: any): string {
 export default function HomeScreen() {
   const router = useRouter();
   const [expandedWeek, setExpandedWeek] = useState<number>(1);
-  const [programLength, setProgramLength] = useState<ProgramLength>(6);
+  const [plan, setPlan] = useState<Plan | null>(null);
+  const [planStale, setPlanStale] = useState(false);
+  const [travelWorkouts, setTravelWorkouts] = useState<any[]>([]);
   const [doneStatus, setDoneStatus] = useState<Record<string, DoneStatus>>({});
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [travel, setTravel] = useState<TravelState | null>(null);
   const [lastDone, setLastDone] = useState<Record<string, number>>({});
-  const autoExpandedRef = useRef(false);
+  // Plan id the week list was last auto-opened for: a rebuilt plan opens on
+  // its current week again.
+  const autoExpandedRef = useRef<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
-      getProgramLength().then(setProgramLength);
-      getTravel().then(setTravel);
+      isPlanStale().then(setPlanStale);
+      getTravel().then(t => {
+        setTravel(t);
+        if (t.active) getTravelWorkouts(t).then(setTravelWorkouts);
+      });
       getAllLogs().then(all => {
         const m: Record<string, number> = {};
         for (const l of Object.values(all)) {
@@ -84,13 +93,15 @@ export default function HomeScreen() {
         }
         setLastDone(m);
       });
-      getProgramStartDate().then(key => {
+      Promise.all([getPlan(), getProgramStartDate()]).then(([p, key]) => {
         const start = fromDateKey(key);
+        setPlan(p);
         setStartDate(start);
         loadDoneStatus(start).then(setDoneStatus);
-        // Open on the current week the first time; after that respect the user's choice.
-        if (!autoExpandedRef.current) {
-          autoExpandedRef.current = true;
+        // Open on the current week the first time a plan is shown; after that
+        // respect the user's choice.
+        if (autoExpandedRef.current !== p.id) {
+          autoExpandedRef.current = p.id;
           setExpandedWeek(Math.max(1, programWeekOn(start, new Date())));
         }
       });
@@ -99,8 +110,9 @@ export default function HomeScreen() {
     }, [router])
   );
 
-  const allWorkouts = resolveAllWorkouts(programLength);
-  const activeWeeks = getActiveWeeks(programLength);
+  const allWorkouts = plan ? planWorkouts(plan) : [];
+  const activeWeeks = plan?.weeks ?? [];
+  const programLength = activeWeeks.length || 6;
   const todayName = DAY_NAMES[new Date().getDay()];
   const notStarted = !!startDate && new Date() < startDate;
   const currentWeek = startDate ? programWeekOn(startDate, new Date()) : 1;
@@ -111,10 +123,23 @@ export default function HomeScreen() {
   const doneCount = allWorkouts.filter((w: any) => doneStatus[w.id] === 'complete').length;
   const startLabel = startDate?.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   const traveling = !!travel?.active;
-  const travelPick = traveling ? pickTravelWorkout(travelWorkoutsFor(travel!.setup, travel!.packed).fits, lastDone) : null;
+  const travelPick = traveling ? pickTravelWorkout(travelWorkouts, lastDone) : null;
   const travelSetupLabel = TRAVEL_SETUPS.find(o => o.value === travel?.setup)?.label;
 
   function reloadTravel() { getTravel().then(setTravel); getProgramStartDate().then(k => setStartDate(fromDateKey(k))); }
+
+  function reloadPlan(rebuilt: boolean) {
+    if (!rebuilt) return;
+    isPlanStale().then(setPlanStale);
+    Promise.all([getPlan(), getProgramStartDate()]).then(([p, k]) => {
+      const st = fromDateKey(k);
+      setPlan(p);
+      setStartDate(st);
+      loadDoneStatus(st).then(setDoneStatus);
+      autoExpandedRef.current = p.id;
+      setExpandedWeek(1);
+    });
+  }
 
   return (
     <SafeAreaView style={s.container}>
@@ -131,6 +156,13 @@ export default function HomeScreen() {
             </Text>
           </View>
         </View>
+
+        {planStale && (
+          <TouchableOpacity style={s.staleCard} onPress={() => confirmRebuildPlan(reloadPlan)} activeOpacity={0.8}>
+            <Text style={s.staleText}>Your settings changed since this plan was built.</Text>
+            <Text style={s.staleLink}>Rebuild ▶</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Travel card — replaces Today while traveling */}
         {traveling && (
@@ -347,4 +379,7 @@ const s = StyleSheet.create({
   travelEntry: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.bgCard, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: spacing.md, marginBottom: spacing.lg },
   travelEntryText: { fontSize: 13, fontWeight: '700', color: colors.text },
   woArrow: { color: colors.accent, fontSize: 13 },
+  staleCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, backgroundColor: colors.warning + '18', borderRadius: radius.md, borderWidth: 1, borderColor: colors.warning + '66', padding: spacing.md, marginBottom: spacing.lg },
+  staleText: { flex: 1, fontSize: 13, color: colors.text },
+  staleLink: { fontSize: 13, fontWeight: '700', color: colors.warning },
 });

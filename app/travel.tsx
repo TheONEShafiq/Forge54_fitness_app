@@ -10,15 +10,19 @@ import {
 } from '../src/utils/travelLibrary';
 import type { TravelSetup, TravelGear, TravelWorkout } from '../src/utils/travelLibrary';
 import { confirmEndTravel } from '../src/utils/travelActions';
+import { getTravelWorkouts } from '../src/store/planStore';
 
 export default function TravelScreen() {
   const router = useRouter();
   const [travel, setTravel] = useState<TravelState | null>(null);
   const [lastDone, setLastDone] = useState<Record<string, number>>({});
   const [showOthers, setShowOthers] = useState(false);
+  // Built for this setup + packed gear and the user's profile (session length,
+  // styles); regenerated whenever the setup or gear changes.
+  const [built, setBuilt] = useState<any[]>([]);
 
   const load = useCallback(() => {
-    getTravel().then(setTravel);
+    getTravel().then(t => { setTravel(t); getTravelWorkouts(t).then(setBuilt); });
     getAllLogs().then(all => {
       const m: Record<string, number> = {};
       for (const l of Object.values(all)) {
@@ -38,6 +42,7 @@ export default function TravelScreen() {
     const next = { ...travel!, ...patch };
     setTravel(next);
     await saveTravel(next);
+    setBuilt(await getTravelWorkouts(next));
   }
 
   function chooseSetup(setup: TravelSetup) { update({ setup }); }
@@ -48,7 +53,7 @@ export default function TravelScreen() {
 
   const { fits, others } = travelWorkoutsFor(travel.setup, travel.packed);
 
-  function row(w: TravelWorkout, dim = false) {
+  function row(w: TravelWorkout | any, dim = false) {
     const last = lastDone[w.id];
     return (
       <TouchableOpacity
@@ -130,7 +135,11 @@ export default function TravelScreen() {
           </>
         )}
 
-        <Text style={[s.sectionTitle, { marginTop: spacing.lg }]}>Workouts for this setup  ·  {fits.length}</Text>
+        <Text style={[s.sectionTitle, { marginTop: spacing.lg }]}>Built for this setup  ·  {built.length}</Text>
+        <Text style={[s.note, { marginBottom: spacing.sm }]}>Made from your profile and session length with the gear above. Change the setup and they rebuild.</Text>
+        <View style={s.listCard}>{built.map(w => row(w))}</View>
+
+        <Text style={[s.sectionTitle, { marginTop: spacing.lg }]}>Classic travel workouts  ·  {fits.length}</Text>
         <View style={s.listCard}>{fits.map(w => row(w))}</View>
 
         {others.length > 0 && (
