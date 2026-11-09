@@ -99,6 +99,37 @@ assert(bench.length === 2, 'benchmark in first and last week');
 const blockNames = (wo: any) => wo.sections.filter((s: any) => s.amrap || s.emom || s.forTime)[0].exercises.map((e: any) => e.name + e.reps).join();
 assert(blockNames(bench[0]) === blockNames(bench[1]), 'retest uses the same movements and reps');
 
+// Week-to-week variety
+const sec = (wo: any, re: RegExp) => wo.sections.find((x: any) => re.test(x.name)).exercises.map((e: any) => e.name).join();
+const amrapDay = p.weeks[0].workouts.findIndex((x: any) => x.benchmarkWorkout);
+assert(blockNames(p.weeks[1].workouts[amrapDay]) !== blockNames(p.weeks[0].workouts[amrapDay]), 'week 2 benchmark-style day uses different movements than week 1');
+const w1all = p.weeks[0].workouts.map((wo: any) => wo.sections.map((x: any) => x.exercises.map((e: any) => e.name).join()).join('|'));
+const w2all = p.weeks[1].workouts.map((wo: any) => wo.sections.map((x: any) => x.exercises.map((e: any) => e.name).join()).join('|'));
+assert(w1all.every((x: string, i: number) => x !== w2all[i]), 'every day of week 2 differs from week 1');
+const cardioDays = cardioPlan.weeks.slice(0, 2).flatMap(w => w.workouts.map((x: any) => x.title));
+assert(new Set(cardioDays).size > 2, 'cardio rotates machines when there are several: ' + [...new Set(cardioDays)].join(' / '));
+
+// Warm-up and cool-down follow the day's work
+const st = generatePlan({ ...base, workoutTypes: ['strength'] }, 42).weeks[0].workouts;
+const lower = st.find((x: any) => x.focus === 'strength-lower'), upper = st.find((x: any) => x.focus === 'strength-upper');
+assert(sec(lower, /cool/i) !== sec(upper, /cool/i), 'lower and upper days get different cool-downs');
+assert(sec(lower, /warm/i) !== sec(upper, /warm/i), 'lower and upper days get different warm-ups');
+assert(/Hip|Quad|Hamstring|Pigeon|Figure-Four|Butterfly|Frog|Couch/.test(sec(lower, /cool/i)), 'lower day stretches the legs: ' + sec(lower, /cool/i));
+assert(/Chest|Shoulder|Triceps|Lat|Trap|Thread|Forearm/.test(sec(upper, /cool/i)), 'upper day stretches the upper body: ' + sec(upper, /cool/i));
+const coolDowns = new Set(p.weeks.flatMap(w => w.workouts.map((x: any) => sec(x, /cool/i))));
+assert(coolDowns.size >= 20, `cool-downs vary across the plan (${coolDowns.size} distinct of 30)`);
+for (const minutes of [15, 35, 75]) {
+  const pl = generatePlan({ ...base, sessionMinutes: minutes }, 3);
+  const ok = pl.weeks.every(w => w.workouts.every((wo: any) => {
+    const [wu, cd] = [/warm/i, /cool/i].map(re => wo.sections.find((x: any) => re.test(x.name)));
+    const t = (x: any) => x.exercises.reduce((a: number, e: any) => a + e.duration, 0);
+    return cd.exercises.length > 0 && t(cd) <= cd.duration * 60 && t(wu) <= Math.max(wu.duration * 60, 60 + 60) ;
+  }));
+  assert(ok, `${minutes} min: warm-up and cool-down fit their minutes`);
+}
+const noBar = generatePlan({ ...base, gear: noGear() }, 3);
+assert(!allEx(noBar).some((e: any) => /Dead Hang|Scap Pull-Up|Band Dislocates/.test(e.name)), 'no equipment: no bar or band drills');
+
 // 60+ avoids jumping when there is an alternative
 const older = generatePlan({ ...base, age: 65 }, 5);
 const jumps = allEx(older).filter((e: any) => /Jump Squat|Broad Jump|Box Jump|Burpee|Jumping Jack|High Knees/.test(e.name));
