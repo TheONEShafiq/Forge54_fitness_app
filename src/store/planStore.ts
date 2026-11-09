@@ -1,11 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getGenerationProfile, getProgramLength, getTravel, setProgramStartDate, toDateKey,
+  getProgramStartDate, fromDateKey,
 } from './settingsStore';
 import type { TravelState } from './settingsStore';
 import {
   generatePlan, generateTravelWorkouts, parseEquipment, travelGear, planInputsKey, hashSeed,
-  DEFAULT_SESSION_MINUTES,
+  DEFAULT_SESSION_MINUTES, GENERATOR_VERSION,
 } from '../utils/planGenerator';
 import type { Plan, PlanInputs } from '../utils/planGenerator';
 import { getActiveWeeks, resolveWorkout, resolveAllWorkouts } from '../utils/workoutResolver';
@@ -56,7 +57,43 @@ async function legacyPlan(): Promise<Plan> {
 }
 
 export async function getPlan(): Promise<Plan> {
-  return (await getStoredPlan()) ?? legacyPlan();
+  const stored = await getStoredPlan();
+  return stored ? upgradePlan(stored) : legacyPlan();
+}
+
+// Same rule as Home's programWeekOn: program weeks are calendar weeks (Mon–Sun)
+// starting with the week that contains the start date.
+function currentProgramWeek(start: Date, day = new Date()): number {
+  const monday = new Date(start.getFullYear(), start.getMonth(), start.getDate() - ((start.getDay() + 6) % 7));
+  const today = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+  return Math.floor(Math.round((today.getTime() - monday.getTime()) / 86400000) / 7) + 1;
+}
+
+// A plan built by an older generator is upgraded in place: regenerated from
+// its own seed (so workout ids and the start date don't change) for this week
+// onward. Weeks already behind the user stay as they did them. A stale plan
+// (settings changed) is left alone for the Rebuild prompt, which builds a
+// current-version plan anyway.
+async function upgradePlan(plan: Plan): Promise<Plan> {
+  if (!plan.inputsKey || (plan.version ?? 15) >= GENERATOR_VERSION) return plan;
+  try {
+    const inputs = await getPlanInputs();
+    if (plan.inputsKey !== planInputsKey(inputs)) return plan;
+    const seed = parseInt(plan.id.slice(1), 36);
+    if (!Number.isFinite(seed)) return plan;
+    const fresh = generatePlan(inputs, seed);
+    if (fresh.id !== plan.id) return plan;
+    const current = currentProgramWeek(fromDateKey(await getProgramStartDate()));
+    const upgraded: Plan = {
+      ...plan,
+      version: GENERATOR_VERSION,
+      weeks: plan.weeks.map(w => (w.week >= current && fresh.weeks.find(f => f.week === w.week)) || w),
+    };
+    await AsyncStorage.setItem(PLAN_KEY, JSON.stringify(upgraded));
+    return upgraded;
+  } catch {
+    return plan;
+  }
 }
 
 export function isGeneratedPlan(plan: Plan): boolean {
