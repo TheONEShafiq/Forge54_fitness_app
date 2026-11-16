@@ -230,7 +230,8 @@ export interface PlanWeek {
 // cool-down, week-to-week rotation of benchmark-style and cardio days.
 // 17: rotating mixed template (functional day, Zone 2, 4x4), fixed anchor
 // lifts with weekly accessory rotation, balance moves.
-export const GENERATOR_VERSION = 18;
+// 19: peak week keeps core, balance and one-arm overhead moves at load-week weight.
+export const GENERATOR_VERSION = 19;
 
 export interface Plan {
   id: string;
