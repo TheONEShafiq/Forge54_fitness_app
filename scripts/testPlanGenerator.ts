@@ -149,6 +149,23 @@ const overheadDays = mx.weeks.map((w: any) => w.workouts.filter((x: any) => main
 assert(overheadDays.every((n: number) => n <= 3), 'overhead pressing on at most 3 days a week: ' + overheadDays.join());
 assert(weekFocuses(['mixed']).join() === 'strength-lower,wod-emom,cardio-intervals,strength-upper,wod-amrap', 'mixed travel rotation unchanged');
 
+// Power and block weights (v18): a light dumbbell rack (5–25 lb) still gives
+// working loads, not 5–8 lb presses and squats.
+const loadedIn = (pl: any, keep: (s: any) => boolean) => pl.weeks.flatMap((w: any) => w.workouts.flatMap((wo: any) =>
+  wo.sections.filter(keep).flatMap((s: any) => s.exercises))).filter((e: any) => e.weight > 0);
+const isBlock = (s: any) => s.amrap || s.emom || s.forTime;
+const plans = [['mixed'], ['crossfit'], ['hiit'], ['strength', 'cardio']].flatMap(t => [1, 7, 42].map(seed => generatePlan({ ...base, workoutTypes: t as any }, seed)));
+const powerEx = plans.flatMap(pl => loadedIn(pl, (s: any) => s.name === 'Power'));
+const blockEx = plans.flatMap(pl => loadedIn(pl, isBlock));
+const light = (xs: any[], re: RegExp, min: number) => [...new Set(xs.filter((e: any) => re.test(e.name) && e.weight < min).map((e: any) => `${e.name} @ ${e.weight}`))];
+assert(powerEx.length > 0 && light(powerEx, /^DB /, 20).length === 0, 'power: dumbbell lifts at least 20 lb on a 25 lb rack ' + light(powerEx, /^DB /, 20).join());
+assert(light(powerEx, /^KB /, 35).length === 0, 'power: kettlebell lifts at least 35 lb on a 50 lb set ' + light(powerEx, /^KB /, 35).join());
+const presses = /Press|Thruster|Squat|Row|Snatch/;
+assert(blockEx.some((e: any) => /^DB /.test(e.name)) && light(blockEx, presses, 15).length === 0, 'blocks: no presses, squats or rows under 15 lb ' + light(blockEx, presses, 15).join());
+assert(blockEx.filter((e: any) => /Halo/.test(e.name)).every((e: any) => e.weight <= 20), 'blocks: core moves keep a light weight');
+const olderBlocks = loadedIn(generatePlan({ ...base, age: 65, workoutTypes: ['crossfit'] }, 1), isBlock);
+assert(olderBlocks.some((e: any) => /Thruster|Shoulder Press/.test(e.name) && e.weight <= 10), '60+ keeps the lighter block weights');
+
 // Warm-up and cool-down follow the day's work
 const st = generatePlan({ ...base, workoutTypes: ['strength'] }, 42).weeks[0].workouts;
 const lower = st.find((x: any) => x.focus === 'strength-lower'), upper = st.find((x: any) => x.focus === 'strength-upper');

@@ -230,7 +230,7 @@ export interface PlanWeek {
 // cool-down, week-to-week rotation of benchmark-style and cardio days.
 // 17: rotating mixed template (functional day, Zone 2, 4x4), fixed anchor
 // lifts with weekly accessory rotation, balance moves.
-export const GENERATOR_VERSION = 17;
+export const GENERATOR_VERSION = 18;
 
 export interface Plan {
   id: string;
@@ -377,6 +377,9 @@ interface Ctx {
   seed: number;
   gear: Gear;
   lowImpact: boolean;
+  // Raise power and block weights to a working load (see LOAD_FLOOR). Off for
+  // travel and 60+, which keep their v17 weights.
+  floors: boolean;
   rand: () => number;
   // Shuffled order per pattern, fixed for the whole plan so weeks line up.
   order: Map<Pattern, CatalogEx[]>;
@@ -447,13 +450,27 @@ function pick(ctx: Ctx, slot: Slot, used: Set<string>, variant = 0, o: PickOpts 
   return ex;
 }
 
-function weightFor(ex: CatalogEx, g: Gear, step: number): number {
+// Power lifts and block movements need a load that actually works an adult.
+// A home rack is bunched at the light end (5, 8, 10, 15, 20, 25), so a pick
+// by position gives 5–8 lb thrusters and presses. These floors are a share of
+// the heaviest of that implement owned: the weight is at least the lightest
+// one at or above it. Core, carry and balance moves keep their position pick
+// (a 35 lb halo is not the point).
+type Floor = Record<Role, number>;
+const POWER_FLOOR: Floor = { light: 0.7, medium: 0.7, heavy: 0.7 };
+const BLOCK_FLOOR: Floor = { light: 0.5, medium: 0.6, heavy: 0.7 };
+const FLOORED = new Set<Pattern>(['squat', 'hinge', 'lunge', 'push', 'pull', 'power']);
+
+function weightFor(ex: CatalogEx, g: Gear, step: number, floor: Floor | null = null): number {
   const l = loadAvailable(ex, g);
   if (!l || l === 'vest') return 0;
   const ws = g[l];
   // "Light" is the low end of the rack, not the very lightest pair.
   const base = ex.role === 'heavy' ? ws.length - 1 : ex.role === 'light' ? Math.round((ws.length - 1) / 4) : Math.floor((ws.length - 1) / 2);
-  return ws[Math.max(0, Math.min(ws.length - 1, base + step))];
+  const w = ws[Math.max(0, Math.min(ws.length - 1, base + step))];
+  if (!floor || !ex.role || !FLOORED.has(ex.pattern)) return w;
+  const min = floor[ex.role] * ws[ws.length - 1];
+  return Math.max(w, ws.find(x => x >= min) ?? ws[ws.length - 1]);
 }
 
 const IMPLEMENT_LABEL: Record<Exclude<Load, 'vest'>, string> = { db: 'DB', kb: 'KB', sandbag: 'Sandbag' };
@@ -751,8 +768,8 @@ function hiitCircuit(moves: CatalogEx[], phase: Phase, mainMin: number, g: Gear)
   };
 }
 
-function blockMovement(ex: CatalogEx, g: Gear) {
-  const weight = weightFor(ex, g, -1);
+function blockMovement(ex: CatalogEx, g: Gear, floors: boolean) {
+  const weight = weightFor(ex, g, -1, floors ? BLOCK_FLOOR : null);
   return ex.kind === 'time'
     ? { name: ex.name, type: 'time', duration: Math.min(ex.seconds ?? 30, 40), sets: 1, weight, cue: ex.cue }
     : { name: ex.name, type: 'sets', sets: 1, reps: ex.blockReps ?? ex.reps ?? 10, weight, cue: ex.cue };
@@ -772,8 +789,8 @@ function wodMoves(ctx: Ctx, focus: Focus, bodyweight: boolean, variant: number):
     .slice(0, focus === 'wod-fortime' ? 3 : 4);
 }
 
-function wodSections(focus: Focus, moves: CatalogEx[], mainMin: number, g: Gear, phase: Phase): any[] {
-  const movements = moves.map(ex => blockMovement(ex, g));
+function wodSections(focus: Focus, moves: CatalogEx[], mainMin: number, g: Gear, phase: Phase, floors: boolean): any[] {
+  const movements = moves.map(ex => blockMovement(ex, g, floors));
   // One block past ~30 minutes is a slog: long sessions split into parts of
   // about 25 minutes, with 2 minutes' rest between them.
   const count = mainMin > 32 ? Math.ceil((mainMin + 2) / 27) : 1;
@@ -842,7 +859,7 @@ function functionalMoves(ctx: Ctx, variant: number): FunctionalMoves {
 const POWER_REST = 75;
 const POWER_SETS: Record<Phase, number> = { foundation: 3, load: 3, peak: 3, deload: 2 };
 
-function functionalSections(m: FunctionalMoves, phase: Phase, mainMin: number, g: Gear, week: number): any[] {
+function functionalSections(m: FunctionalMoves, phase: Phase, mainMin: number, g: Gear, week: number, floors: boolean): any[] {
   const sections: any[] = [];
   let left = mainMin * 60;
   const sets = POWER_SETS[phase];
@@ -853,7 +870,7 @@ function functionalSections(m: FunctionalMoves, phase: Phase, mainMin: number, g
       sets,
       // Low reps, done fast: stop the set before the speed drops.
       reps: Math.max(5, Math.round((ex.reps ?? 10) * 0.6)),
-      weight: weightFor(ex, g, 0),
+      weight: weightFor(ex, g, 0, floors ? POWER_FLOOR : null),
       rest: POWER_REST,
     }));
     const sec = power.reduce((t, ex) => t + exSeconds(ex, sets, POWER_REST), 0);
@@ -879,7 +896,7 @@ function functionalSections(m: FunctionalMoves, phase: Phase, mainMin: number, g
   }
   const mins = Math.floor(left / 60) - 1;
   if (mins >= 4 && m.finisher.length) {
-    const movements = m.finisher.map(ex => blockMovement(ex, g));
+    const movements = m.finisher.map(ex => blockMovement(ex, g, floors));
     if (week % 2 === 0) {
       const even = Math.max(movements.length, Math.floor(mins / movements.length) * movements.length);
       sections.push({
@@ -1030,14 +1047,14 @@ function buildWorkout(
   } else if (focus === 'functional') {
     const f = slot.functional!;
     moves = [...f.power, ...f.circuit, ...f.finisher];
-    main = functionalSections(f, phase, split.main, g, o.week);
+    main = functionalSections(f, phase, split.main, g, o.week, ctx.floors);
   } else if (focus === 'cardio-vo2' && split.main >= 20) {
     main = vo2Sections(split.main, mode, phase);
   } else if (isCardio) {
     main = cardioSections(focus === 'cardio-vo2' ? 'cardio-intervals' : focus, split.main, mode, phase, o.week);
   } else {
     moves = slot.wod!;
-    main = wodSections(focus, moves, split.main, g, phase);
+    main = wodSections(focus, moves, split.main, g, phase, ctx.floors);
   }
   const weights = regionWeights(moves, isCardio ? mode : null);
   const rand = rng(hashSeed(`${ctx.seed}:${o.week}:${o.day}`));
@@ -1087,8 +1104,9 @@ function slotPicker(ctx: Ctx, minutes: number, n: number) {
   };
 }
 
-function makeCtx(inputs: PlanInputs, seed: number, gear: Gear): Ctx {
-  const base = { seed, gear, lowImpact: (inputs.age ?? 0) >= 60, rand: rng(seed) };
+function makeCtx(inputs: PlanInputs, seed: number, gear: Gear, travel = false): Ctx {
+  const lowImpact = (inputs.age ?? 0) >= 60;
+  const base = { seed, gear, lowImpact, floors: !travel && !lowImpact, rand: rng(seed) };
   return { ...base, order: buildOrder(base) };
 }
 
@@ -1163,7 +1181,7 @@ const FOCUS_SUMMARY: Record<Focus, string> = {
 // travel setup's gear and the user's session length.
 export function generateTravelWorkouts(inputs: PlanInputs, seed: number): any[] {
   const gear = effectiveGear(inputs);
-  const ctx = makeCtx(inputs, seed, gear);
+  const ctx = makeCtx(inputs, seed, gear, true);
   const minutes = inputs.sessionMinutes || DEFAULT_SESSION_MINUTES;
   const focuses = [...new Set(weekFocuses(inputs.workoutTypes))];
   // A rotation with one focus (e.g. cardio only on a cardio-less room) still
