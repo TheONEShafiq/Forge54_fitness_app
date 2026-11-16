@@ -14,6 +14,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getAllAnnouncementTexts } from '../src/utils/workoutAnnouncements';
+import { fragmentVocabulary } from '../src/utils/speechFragments';
 
 const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgDQGcFmaJgB'; // "Adam" — warm, natural male voice
 const MODEL_ID = 'eleven_turbo_v2_5';
@@ -35,7 +36,9 @@ function hashText(key: string): string {
 }
 
 async function main() {
-  const texts = getAllAnnouncementTexts();
+  // Whole phrases (authored program, travel library, fixed cues) plus the short
+  // pieces generated plans' announcements are stitched from.
+  const texts = [...new Set([...getAllAnnouncementTexts(), ...fragmentVocabulary()])];
   const totalChars = texts.reduce((sum, t) => sum + t.length, 0);
   console.log(`Found ${texts.length} unique phrases, ${totalChars} total characters.`);
 
@@ -63,7 +66,8 @@ async function main() {
       continue;
     }
     try {
-      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`, {
+      // 64 kbps keeps ~1,000 short clips from bloating the app; plenty for speech.
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output_format=mp3_44100_64`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

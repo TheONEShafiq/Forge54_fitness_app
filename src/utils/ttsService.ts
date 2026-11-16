@@ -4,6 +4,7 @@ import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TTS_MANIFEST } from './ttsManifest.generated';
+import { speechFragments } from './speechFragments';
 
 // ── Voice settings (persisted) ────────────────────────────────────────────────
 const CLOUD_ENABLED_KEY = 'forge_voice_cloud_enabled';
@@ -50,6 +51,7 @@ async function ensureAudioMode() {
   }
 }
 
+// One-off sounds (the bell) that may overlap speech.
 function playSource(source: number | string) {
   ensureAudioMode();
   try {
@@ -64,6 +66,64 @@ function playSource(source: number | string) {
   } catch (e) {
     console.warn('audio playback error:', e);
   }
+}
+
+// ── Announcement channel ──────────────────────────────────────────────────────
+// Only one announcement speaks at a time. Each new one (recorded clip, chain
+// of recorded pieces, cloud clip or the phone's voice) first silences the
+// last; before this, a long device-voice announcement could still be talking
+// when the next recorded cue started, so two voices spoke over each other.
+type Player = ReturnType<typeof createAudioPlayer>;
+let channelToken = 0;
+let channelPlayers: Player[] = [];
+let deviceSpeaking = false;
+let cloudPending = false;
+
+// True while an announcement is still being spoken (or fetched). The player
+// holds a lead-in's 3-2-1 until this goes false, so the countdown follows
+// the announcement instead of talking over it.
+export function isAnnouncing(): boolean {
+  return channelPlayers.length > 0 || deviceSpeaking || cloudPending;
+}
+
+function silenceChannel(): number {
+  channelToken++;
+  deviceSpeaking = false;
+  cloudPending = false;
+  for (const p of channelPlayers) {
+    try { p.pause(); p.remove(); } catch {}
+  }
+  channelPlayers = [];
+  try { Speech.stop(); } catch {}
+  return channelToken;
+}
+
+// Plays sources back to back on the channel. All players are created up front
+// so each piece is loaded by the time the one before it ends.
+function playSequence(sources: (number | string)[], token: number) {
+  ensureAudioMode();
+  if (token !== channelToken) return;
+  let players: Player[];
+  try {
+    players = sources.map(src => createAudioPlayer(typeof src === 'string' ? { uri: src } : src));
+  } catch (e) {
+    console.warn('audio playback error:', e);
+    return;
+  }
+  channelPlayers = players;
+  const playAt = (i: number) => {
+    if (token !== channelToken) return;
+    if (i >= players.length) {
+      for (const p of players) { try { p.remove(); } catch {} }
+      channelPlayers = [];
+      return;
+    }
+    const sub = players[i].addListener('playbackStatusUpdate', (status) => {
+      if (status.didJustFinish) { sub.remove(); playAt(i + 1); }
+    });
+    try { players[i].play(); } catch (e) { console.warn('audio playback error:', e); }
+  };
+  playAt(0);
 }
 
 // Short timing cues (the 3-2-1 countdown) keep one long-lived player each.
@@ -99,9 +159,12 @@ export function preloadCues(texts: string[]) {
   }
 }
 
+// A countdown cue is on the clock, so it wins: whatever announcement is still
+// running stops rather than talking over "3, 2, 1".
 export function speakCue(text: string) {
   const player = cuePlayers.get(text);
   if (!player) { speak(text); return; }
+  silenceChannel();
   try {
     player.play();
   } catch (e) {
@@ -121,11 +184,16 @@ export function releaseCues() {
 // the app itself — no network, no key, no per-user cost, works for anyone who
 // downloads the app. Only text outside that fixed set (e.g. a newly added
 // exercise before the next asset regeneration) falls through to cloud/device.
-function speakBundled(text: string): boolean {
-  const asset = TTS_MANIFEST[text];
-  if (asset === undefined) return false;
-  playSource(asset);
-  return true;
+// Whole phrase recorded, or every piece of it recorded (generated workouts).
+// A phrase with any piece missing is not spliced: half recorded voice, half
+// phone voice in one sentence is worse than one consistent fallback voice.
+function bundledSources(text: string): number[] | null {
+  const whole = TTS_MANIFEST[text];
+  if (whole !== undefined) return [whole];
+  const parts = speechFragments(text);
+  if (parts.length < 2) return null;
+  const assets = parts.map(p => TTS_MANIFEST[p]);
+  return assets.every(a => a !== undefined) ? assets : null;
 }
 
 // ── On-disk cache for spoken phrases ───────────────────────────────────────────
@@ -183,40 +251,51 @@ async function synthesizeToFile(text: string, apiKey: string): Promise<File> {
 // the rest of the session so every subsequent cue doesn't stall on a timeout.
 let cloudFailedThisSession = false;
 
-async function speakCloud(text: string): Promise<boolean> {
+async function speakCloud(text: string, token: number): Promise<boolean> {
   if (cloudFailedThisSession) return false;
   const [enabled, apiKey] = await Promise.all([getCloudVoiceEnabled(), getTtsApiKey()]);
   if (!enabled || !apiKey) return false;
+  // Superseded while reading settings: a newer announcement owns the channel.
+  if (token !== channelToken) return true;
+  cloudPending = true;
   try {
     const file = await synthesizeToFile(text, apiKey);
-    playSource(file.uri);
+    if (token === channelToken) cloudPending = false;
+    // Superseded while downloading: drop it rather than speak late.
+    playSequence([file.uri], token);
     return true;
   } catch (e) {
+    if (token === channelToken) cloudPending = false;
     console.warn('Cloud voice failed, falling back to device voice for this session:', e);
     cloudFailedThisSession = true;
     return false;
   }
 }
 
-function speakDevice(text: string) {
+function speakDevice(text: string, token: number) {
+  if (token !== channelToken) return;
+  const done = () => { if (token === channelToken) deviceSpeaking = false; };
   try {
-    Speech.stop();
-    Speech.speak(text, { language: 'en-US', pitch: 0.95, rate: 0.9 });
+    deviceSpeaking = true;
+    Speech.speak(text, {
+      language: 'en-US', pitch: 0.95, rate: 0.9,
+      onDone: done, onStopped: done, onError: done,
+    });
   } catch (e) {
     console.warn('speak error:', e);
   }
 }
 
 export async function speak(text: string): Promise<void> {
-  if (speakBundled(text)) return;
-  const usedCloud = await speakCloud(text);
-  if (!usedCloud) speakDevice(text);
+  const token = silenceChannel();
+  const bundled = bundledSources(text);
+  if (bundled) { playSequence(bundled, token); return; }
+  const usedCloud = await speakCloud(text, token);
+  if (!usedCloud) speakDevice(text, token);
 }
 
 export async function stopSpeech() {
-  try {
-    Speech.stop();
-  } catch {}
+  silenceChannel();
 }
 
 export function buildExerciseAnnouncement(ex: any): string {

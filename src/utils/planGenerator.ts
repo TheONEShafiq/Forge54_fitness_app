@@ -219,8 +219,14 @@ export interface PlanWeek {
   workouts: any[];
 }
 
+// Bumped when the generator's output changes in a way existing plans should
+// pick up (planStore upgrades them in place). 16: region-based warm-up and
+// cool-down, week-to-week rotation of benchmark-style and cardio days.
+export const GENERATOR_VERSION = 16;
+
 export interface Plan {
   id: string;
+  version?: number;
   createdAt: string | null;
   // Fingerprint of the inputs it was built from; null for the authored program.
   inputsKey: string | null;
@@ -333,6 +339,7 @@ const FOCUS_TYPE: Record<Focus, string> = {
 
 // ── Exercise selection ────────────────────────────────────────────────────────
 interface Ctx {
+  seed: number;
   gear: Gear;
   lowImpact: boolean;
   rand: () => number;
@@ -387,7 +394,10 @@ function pick(ctx: Ctx, pattern: Pattern, used: Set<string>, variant = 0, o: Pic
     (!o.noSides || !e.sides) &&
     (!o.bodyweight || (!e.load && !e.needs?.length)));
   if (!options.length) return null;
-  const ex = options[variant % options.length];
+  // 60+: later variants must not wander into the jumping moves sorted last.
+  const calm = ctx.lowImpact ? options.filter(e => !e.impact) : options;
+  const pool = calm.length ? calm : options;
+  const ex = pool[variant % pool.length];
   used.add(ex.name);
   return ex;
 }
@@ -427,46 +437,162 @@ export function splitSession(minutes: number) {
   return { total, warmup, main: total - warmup - cooldown, cooldown };
 }
 
-function cardioMode(g: Gear) {
-  return CARDIO_MODES.find(m => !m.needs || g[m.needs])!;
+// Cardio machines the user can use, best first. Plans rotate through the first
+// few week to week, so a row day one week is a bike day the next.
+function cardioModes(g: Gear) {
+  const machines = CARDIO_MODES.filter(m => m.needs && g[m.needs]);
+  const main = machines.filter(m => m.needs === 'rower' || m.needs === 'bike' || m.needs === 'treadmill');
+  if (main.length) return main;
+  return machines.length ? machines : [CARDIO_MODES[CARDIO_MODES.length - 1]];
+}
+type CardioMode = typeof CARDIO_MODES[number];
+
+// ── Warm-up and cool-down ─────────────────────────────────────────────────────
+// Both are built from the day's main work: each movement pattern loads certain
+// regions, and the drills and stretches that cover those regions win. A small
+// per-week jitter swaps near-equal choices, so the same day isn't the same
+// routine every week.
+type Region =
+  | 'quads' | 'hamstrings' | 'glutes' | 'hips' | 'adductors' | 'calves'
+  | 'lowback' | 'spine' | 'chest' | 'shoulders' | 'lats' | 'upperback' | 'arms';
+
+interface MobilityEx { name: string; regions: Region[]; seconds: number; sides?: boolean; needs?: GearFlag[]; cue: string }
+
+// Primary region first.
+const PATTERN_REGIONS: Record<Pattern, Region[]> = {
+  squat: ['quads', 'glutes', 'adductors', 'hips', 'calves'],
+  hinge: ['hamstrings', 'glutes', 'lowback'],
+  lunge: ['hips', 'quads', 'glutes', 'adductors'],
+  push: ['chest', 'shoulders', 'arms'],
+  pull: ['lats', 'upperback', 'arms'],
+  core: ['spine', 'lowback', 'hips'],
+  carry: ['upperback', 'arms', 'hips'],
+  power: ['hamstrings', 'glutes', 'hips', 'shoulders'],
+  conditioning: ['calves', 'hips', 'quads', 'shoulders'],
+};
+
+const CARDIO_REGIONS: Record<string, Region[]> = {
+  Row: ['lats', 'hamstrings', 'lowback', 'upperback'],
+  Bike: ['quads', 'hips', 'glutes'],
+  Run: ['calves', 'hamstrings', 'hips'],
+  Ruck: ['calves', 'hips', 'lowback', 'upperback'],
+  'Jump Rope': ['calves', 'shoulders'],
+  Bodyweight: ['calves', 'hips', 'quads'],
+};
+
+// Dynamic drills, in the order they run (floor → standing).
+const WARMUP_DRILLS: MobilityEx[] = [
+  { name: 'Cat-Cow', regions: ['spine', 'lowback'], seconds: 45, cue: 'On all fours. Round up on the exhale, arch on the inhale. Slow.' },
+  { name: 'Open Book', regions: ['spine', 'upperback', 'chest'], seconds: 45, cue: 'On your side, knees stacked. Open the top arm across and follow it with your eyes. Switch halfway.' },
+  { name: 'Glute Bridge March', regions: ['glutes', 'hamstrings'], seconds: 45, cue: 'Hips up and level. March one knee up at a time without the hips dropping.' },
+  { name: 'Scap Push-Up', regions: ['shoulders', 'chest', 'upperback'], seconds: 45, cue: 'Plank, arms straight. Let the chest sink between the shoulders, then push the floor away.' },
+  { name: 'Inchworm to Plank', regions: ['hamstrings', 'shoulders', 'chest'], seconds: 60, cue: 'Walk the hands out to plank, pause, walk back.' },
+  { name: 'Push-Up to Down Dog', regions: ['chest', 'shoulders', 'calves', 'hamstrings'], seconds: 45, cue: 'One push-up, then push the hips up into down dog and pedal the heels.' },
+  { name: "World's Greatest Stretch", regions: ['hips', 'hamstrings', 'spine'], seconds: 60, cue: 'Lunge, elbow to instep, rotate and reach up. Alternate sides slowly.' },
+  { name: 'Walking Lunge with Reach', regions: ['hips', 'quads', 'glutes'], seconds: 60, cue: 'Long step, sink the back knee, reach both arms up. Alternate legs.' },
+  { name: 'Squat to Stand', regions: ['quads', 'adductors', 'hamstrings'], seconds: 45, cue: 'Grab the toes, sink into a deep squat with the chest up, then stand. Slow.' },
+  { name: 'Lateral Lunge Shift', regions: ['adductors', 'glutes'], seconds: 45, cue: 'Wide stance. Shift side to side, sitting into each hip.' },
+  { name: 'Hip Circle + Leg Swing', regions: ['hips', 'adductors', 'hamstrings'], seconds: 60, cue: '10 hip circles each direction, then 10 leg swings each side.' },
+  { name: 'Bodyweight Good Morning', regions: ['hamstrings', 'lowback'], seconds: 45, cue: 'Hands behind the head, soft knees. Hinge until the hamstrings pull, then stand.' },
+  { name: 'Ankle Rocks + Calf Raises', regions: ['calves'], seconds: 45, cue: 'Rock the knee over the toes, then 10 slow calf raises. Both sides.' },
+  { name: 'Arm Circles', regions: ['shoulders', 'chest'], seconds: 45, cue: 'Small to big circles, forward then back.' },
+  { name: 'Wall Slides', regions: ['shoulders', 'upperback'], seconds: 45, cue: 'Back and arms flat on a wall. Slide the arms up and down without losing contact.' },
+  { name: 'Band Dislocates', regions: ['shoulders', 'chest', 'upperback'], seconds: 45, needs: ['bands'], cue: 'Wide grip, arms straight. Take the band over the head and behind, then back. Slow.' },
+  { name: 'Scap Pull-Up', regions: ['lats', 'upperback'], seconds: 45, needs: ['pullup'], cue: 'Hang with straight arms. Pull the shoulders down and back, hold, release.' },
+];
+
+// Static holds, in the order they run (standing → kneeling → lying down).
+const COOLDOWN_STRETCHES: MobilityEx[] = [
+  { name: 'Wall Calf Stretch', regions: ['calves'], seconds: 30, sides: true, cue: 'Hands on a wall, back leg straight, heel down. Lean in.' },
+  { name: 'Standing Quad Stretch', regions: ['quads', 'hips'], seconds: 30, sides: true, cue: 'Heel to glute, knees together. Hold something for balance.' },
+  { name: 'Standing Forward Fold', regions: ['hamstrings', 'lowback'], seconds: 60, cue: 'Soft knees, let the head hang. Breathe out and sink a little lower.' },
+  { name: 'Doorway Chest Stretch', regions: ['chest', 'shoulders'], seconds: 30, sides: true, cue: 'Forearm on a door frame, step through. Open the chest.' },
+  { name: 'Cross-Body Shoulder Stretch', regions: ['shoulders', 'upperback'], seconds: 30, sides: true, cue: 'Arm across the chest, ease it in at the elbow. Shoulder stays down.' },
+  { name: 'Overhead Triceps Stretch', regions: ['arms', 'lats'], seconds: 30, sides: true, cue: 'Hand down the upper back. The other hand eases the elbow back.' },
+  { name: 'Wrist and Forearm Stretch', regions: ['arms'], seconds: 45, cue: 'Arm straight, palm up, ease the fingers back. Then palm down. Both arms.' },
+  { name: 'Upper Trap Stretch', regions: ['upperback'], seconds: 30, sides: true, cue: 'Ear toward the shoulder, opposite hand reaches for the floor. Gentle.' },
+  { name: 'Dead Hang', regions: ['lats', 'shoulders', 'spine'], seconds: 30, needs: ['pullup'], cue: 'Hang loose from the bar. Let the shoulders open. Breathe.' },
+  { name: 'Kneeling Hip Flexor Stretch', regions: ['hips', 'quads'], seconds: 40, sides: true, cue: 'Half-kneeling. Squeeze the back glute and shift forward gently.' },
+  { name: 'Couch Stretch', regions: ['quads', 'hips'], seconds: 40, sides: true, cue: 'Back knee by a wall or couch, shin up it. Tall chest, squeeze the glute.' },
+  { name: 'Kneeling Lat Stretch', regions: ['lats', 'shoulders'], seconds: 45, cue: 'Hands on a bench or chair, sit the hips back. Let the chest sink.' },
+  { name: 'Thread-the-Needle', regions: ['upperback', 'spine', 'shoulders'], seconds: 30, sides: true, cue: 'On all fours, slide one arm under. Rest the shoulder and ear down.' },
+  { name: 'Downward Dog', regions: ['calves', 'hamstrings', 'shoulders'], seconds: 45, cue: 'Hips high, heels toward the floor. Push the floor away.' },
+  { name: "Child's Pose", regions: ['lats', 'lowback', 'spine'], seconds: 60, cue: 'Knees wide, arms long. Breathe into your back.' },
+  { name: 'Frog Stretch', regions: ['adductors', 'hips'], seconds: 45, cue: 'Knees wide on the floor, shins parallel. Rock the hips back gently.' },
+  { name: 'Pigeon Pose', regions: ['glutes', 'hips'], seconds: 45, sides: true, cue: 'Front shin across, back leg long. Fold forward and breathe.' },
+  { name: 'Cobra Stretch', regions: ['spine'], seconds: 45, cue: 'Hips down, press the chest up. Gentle on the low back.' },
+  { name: 'Butterfly Stretch', regions: ['adductors', 'hips'], seconds: 60, cue: 'Soles together, knees wide. Tall spine, lean forward slowly.' },
+  { name: 'Supine Hamstring Stretch', regions: ['hamstrings', 'calves'], seconds: 40, sides: true, cue: 'On your back, one leg up. Hands behind the thigh, knee soft.' },
+  { name: 'Figure-Four Stretch', regions: ['glutes', 'hips'], seconds: 40, sides: true, cue: 'On your back, ankle over the opposite knee. Pull the thigh in.' },
+  { name: 'Supine Spinal Twist', regions: ['spine', 'lowback', 'glutes'], seconds: 40, sides: true, cue: 'Knees to one side, arms wide. Both shoulders stay down.' },
+  { name: 'Happy Baby', regions: ['hips', 'adductors', 'lowback'], seconds: 45, cue: 'On your back, hold the feet, knees toward the armpits. Rock gently.' },
+];
+
+const POSITION_WEIGHT = [1, 0.8, 0.6, 0.5, 0.4];
+
+function regionWeights(moves: CatalogEx[], mode: CardioMode | null): Map<Region, number> {
+  const w = new Map<Region, number>();
+  const add = (regions: Region[], scale: number) => regions.forEach((r, i) =>
+    w.set(r, (w.get(r) ?? 0) + scale * (POSITION_WEIGHT[i] ?? 0.4)));
+  for (const ex of moves) add(PATTERN_REGIONS[ex.pattern], 1);
+  if (mode) add(CARDIO_REGIONS[mode.label] ?? [], moves.length ? 1 : 3);
+  if (!w.size) add(['hips', 'hamstrings', 'spine', 'shoulders'], 1);
+  return w;
 }
 
-function warmupSection(minutes: number, g: Gear) {
-  const mode = cardioMode(g);
-  const mobility = [
-    { name: "World's Greatest Stretch", type: 'time', duration: 60, sets: 1, weight: 0, cue: 'Lunge, elbow to instep, rotate and reach up. Alternate sides slowly.' },
-    { name: 'Hip Circle + Leg Swing', type: 'time', duration: 60, sets: 1, weight: 0, cue: '10 hip circles each direction, then 10 leg swings each side.' },
-    { name: 'Inchworm to Plank', type: 'time', duration: 60, sets: 1, weight: 0, cue: 'Walk the hands out to plank, pause, walk back.' },
-  ];
-  const drills = mobility.slice(0, minutes <= 3 ? 1 : minutes <= 5 ? 2 : 3);
-  const easySec = Math.max(60, minutes * 60 - drills.length * 60);
+const mobilityCost = (m: MobilityEx) => m.seconds * (m.sides ? 2 : 1);
+
+// Greedy cover: each pick favours regions the day worked hardest, then those
+// regions count for less so the next pick covers something else.
+function pickMobility(
+  list: MobilityEx[], weights: Map<Region, number>, budgetSec: number, maxItems: number,
+  g: Gear, rand: () => number, exclude: Set<string> = new Set(),
+): MobilityEx[] {
+  const w = new Map(weights);
+  const pool = list.filter(m => !exclude.has(m.name) && (m.needs ?? []).every(n => g[n]));
+  const jitter = new Map(pool.map(m => [m.name, 0.75 + rand() * 0.5]));
+  const chosen: MobilityEx[] = [];
+  let left = budgetSec;
+  while (chosen.length < maxItems) {
+    let best: MobilityEx | null = null;
+    let bestScore = 0;
+    for (const m of pool) {
+      if (chosen.includes(m) || mobilityCost(m) > left) continue;
+      const score = m.regions.reduce((t, r, i) => t + (w.get(r) ?? 0) * (i === 0 ? 1 : 0.7), 0) * jitter.get(m.name)!;
+      if (score > bestScore) { best = m; bestScore = score; }
+    }
+    if (!best) break;
+    chosen.push(best);
+    left -= mobilityCost(best);
+    for (const r of best.regions) w.set(r, (w.get(r) ?? 0) * 0.35);
+  }
+  // Run in catalog order (floor to standing, standing to lying), not pick order.
+  return chosen.sort((a, b) => list.indexOf(a) - list.indexOf(b));
+}
+
+function mobilityExercises(m: MobilityEx): any[] {
+  const make = (name: string) => ({ name, type: 'time', duration: m.seconds, sets: 1, weight: 0, cue: m.cue });
+  return m.sides ? [make(`${m.name} (Right)`), make(`${m.name} (Left)`)] : [make(m.name)];
+}
+
+function warmupSection(minutes: number, g: Gear, mode: CardioMode, weights: Map<Region, number>, rand: () => number) {
+  const count = minutes <= 3 ? 1 : minutes <= 5 ? 2 : 3;
+  const drills = pickMobility(WARMUP_DRILLS, weights, minutes * 60 - 60, count, g, rand);
+  const easySec = Math.max(60, minutes * 60 - drills.reduce((t, d) => t + mobilityCost(d), 0));
   return {
     name: 'Warm-Up', duration: minutes,
     exercises: [
       { name: mode.easy, type: 'time', duration: easySec, sets: 1, weight: 0, cue: 'Easy pace. Get warm and breathing.' },
-      ...drills,
+      ...drills.flatMap(mobilityExercises),
     ],
   };
 }
 
-function cooldownSection(minutes: number) {
-  const stretches = [
-    { name: "Child's Pose", type: 'time', duration: 60, sets: 1, weight: 0, cue: 'Knees wide, arms long. Breathe into your back.' },
-    { name: 'Hip Flexor Stretch (Right)', type: 'time', duration: 45, sets: 1, weight: 0, cue: 'Half-kneeling. Squeeze the glute, shift forward gently.' },
-    { name: 'Hip Flexor Stretch (Left)', type: 'time', duration: 45, sets: 1, weight: 0, cue: 'Half-kneeling. Squeeze the glute, shift forward gently.' },
-    { name: 'Hamstring Stretch', type: 'time', duration: 60, sets: 1, weight: 0, cue: 'Long legs, hinge forward. Breathe, no bouncing.' },
-    { name: 'Doorway Chest Stretch', type: 'time', duration: 45, sets: 1, weight: 0, cue: 'Forearm on a door frame, step through. Open the chest.' },
-  ];
-  let left = minutes * 60;
-  const out: any[] = [];
-  for (const s of stretches) {
-    if (left < s.duration) break;
-    out.push(s);
-    left -= s.duration;
-  }
-  // Keep (Right)/(Left) pairs whole.
-  if (out.length && out[out.length - 1].name.endsWith('(Right)')) out.pop();
-  return { name: 'Cool-Down', duration: minutes, exercises: out };
+function cooldownSection(minutes: number, g: Gear, weights: Map<Region, number>, rand: () => number, warmup: any) {
+  // A drill the warm-up just used (Cat-Cow) isn't repeated as a stretch.
+  const used = new Set<string>(warmup.exercises.map((e: any) => String(e.name)));
+  const stretches = pickMobility(COOLDOWN_STRETCHES, weights, minutes * 60, 8, g, rand, used);
+  return { name: 'Cool-Down', duration: minutes, exercises: stretches.flatMap(mobilityExercises) };
 }
 
 // ── Main blocks ───────────────────────────────────────────────────────────────
@@ -624,15 +750,18 @@ function wodSections(focus: Focus, moves: CatalogEx[], mainMin: number, g: Gear,
       exercises: pair.map((m: any) => ({ ...m, type: 'time', duration: work, reps: undefined })),
     });
   });
+  // Only the cool-down follows the last block: a minute's rest is plenty.
+  sections[sections.length - 1].restAfter = 60;
   return sections;
 }
 
-const INTERVALS: Record<Phase, [number, number]> = {
-  foundation: [60, 60], load: [90, 60], peak: [60, 30], deload: [45, 90],
-};
+// Two interval shapes per phase; alternate weeks use the other one.
+const INTERVALS: Record<Phase, [number, number]>[] = [
+  { foundation: [60, 60], load: [90, 60], peak: [60, 30], deload: [45, 90] },
+  { foundation: [30, 30], load: [120, 60], peak: [40, 20], deload: [30, 60] },
+];
 
-function cardioSections(focus: Focus, mainMin: number, g: Gear, phase: Phase): any[] {
-  const mode = cardioMode(g);
+function cardioSections(focus: Focus, mainMin: number, mode: CardioMode, phase: Phase, week: number): any[] {
   if (focus === 'cardio-steady') {
     const zone = phase === 'peak' ? 'Upper Zone 2 — you can talk, just.' : phase === 'deload' ? 'Easy — fully conversational.' : 'Zone 2 — conversational pace.';
     return [{
@@ -640,7 +769,7 @@ function cardioSections(focus: Focus, mainMin: number, g: Gear, phase: Phase): a
       exercises: [{ name: mode.steady, type: 'time', duration: mainMin * 60, sets: 1, weight: 0, cue: zone }],
     }];
   }
-  const [work, rest] = INTERVALS[phase];
+  const [work, rest] = INTERVALS[week % 2][phase];
   const rounds = Math.max(3, Math.floor((mainMin * 60) / (work + rest)));
   return [{
     name: 'Intervals', duration: mainMin,
@@ -652,10 +781,9 @@ function cardioSections(focus: Focus, mainMin: number, g: Gear, phase: Phase): a
 }
 
 // ── Workout assembly ──────────────────────────────────────────────────────────
-interface SlotMoves { strength?: CatalogEx[][]; hiit?: CatalogEx[][]; wod?: CatalogEx[] }
+interface SlotMoves { strength?: CatalogEx[][]; hiit?: CatalogEx[][]; wod?: CatalogEx[][] }
 
-function titleFor(focus: Focus, sections: any[], g: Gear): string {
-  const mode = cardioMode(g);
+function titleFor(focus: Focus, sections: any[], mode: CardioMode): string {
   switch (focus) {
     case 'strength-lower': return 'Lower Body Strength';
     case 'strength-upper': return 'Upper Body Strength';
@@ -692,19 +820,29 @@ function equipmentOf(sections: any[], movesUsed: CatalogEx[], g: Gear): string[]
     const range = ws.length === 1 ? `${ws[0]}` : `${ws[0]}–${ws[ws.length - 1]}`;
     loads.push(`${range}lb ${IMPLEMENT_LABEL[l]}`);
   }
-  const mode = cardioMode(g);
-  if (sections.some(s => s.exercises.some((e: any) => e.name === mode.steady || e.name === mode.hard || e.name === mode.easy)) && mode.needs) {
-    out.add(NEED_LABEL[mode.needs]);
+  for (const mode of CARDIO_MODES) {
+    if (mode.needs && sections.some(s => s.exercises.some((e: any) => e.name === mode.steady || e.name === mode.hard || e.name === mode.easy))) {
+      out.add(NEED_LABEL[mode.needs]);
+    }
   }
   const all = [...loads, ...out];
   return all.length ? all : ['Bodyweight'];
 }
 
+// `variant` is the A/B week for strength and HIIT moves; `wodVariant` picks
+// the benchmark-style movements (0 = the benchmark); `week` and `day` rotate
+// cardio machines and seed the warm-up / cool-down choices.
+interface BuildOpts { phase: Phase; variant: number; wodVariant: number; week: number; day: number }
+
 function buildWorkout(
-  ctx: Ctx, focus: Focus, phase: Phase, variant: number, minutes: number, slot: SlotMoves,
-): { sections: any[]; moves: CatalogEx[] } {
+  ctx: Ctx, focus: Focus, minutes: number, slot: SlotMoves, o: BuildOpts,
+): { sections: any[]; moves: CatalogEx[]; mode: CardioMode } {
+  const { phase, variant } = o;
   const split = splitSession(minutes);
   const g = ctx.gear;
+  const modes = cardioModes(g);
+  const mode = modes[(o.week + o.day) % modes.length];
+  const isCardio = focus === 'cardio-steady' || focus === 'cardio-intervals';
   let main: any[];
   let moves: CatalogEx[] = [];
   if (focus.startsWith('strength')) {
@@ -716,15 +854,19 @@ function buildWorkout(
   } else if (focus === 'hiit-circuit') {
     moves = slot.hiit![variant];
     main = [hiitCircuit(moves, phase, split.main, g)];
-  } else if (focus === 'cardio-steady' || focus === 'cardio-intervals') {
-    main = cardioSections(focus, split.main, g, phase);
+  } else if (isCardio) {
+    main = cardioSections(focus, split.main, mode, phase, o.week);
   } else {
-    moves = slot.wod!;
+    moves = slot.wod![o.wodVariant % slot.wod!.length];
     main = wodSections(focus, moves, split.main, g, phase);
   }
+  const weights = regionWeights(moves, isCardio ? mode : null);
+  const rand = rng(hashSeed(`${ctx.seed}:${o.week}:${o.day}`));
+  const warmup = warmupSection(split.warmup, g, mode, weights, rand);
   return {
-    sections: [warmupSection(split.warmup, g), ...main, cooldownSection(split.cooldown)],
+    sections: [warmup, ...main, cooldownSection(split.cooldown, g, weights, rand, warmup)],
     moves,
+    mode,
   };
 }
 
@@ -739,13 +881,15 @@ function prepareSlots(ctx: Ctx, focuses: Focus[], minutes: number): SlotMoves[] 
     if (f.startsWith('strength')) return { strength: [0, 1].map(v => chooseStrength(ctx, f, main, v, false)) };
     if (f === 'bw-circuit') return { strength: [0, 1].map(v => chooseStrength(ctx, 'strength-full', Math.max(main, 20), v, true).slice(0, 6)) };
     if (f === 'hiit-circuit') return { hiit: [0, 1].map(v => hiitMoves(ctx, v)) };
-    if (f.startsWith('wod') || f === 'hiit-emom') return { wod: wodMoves(ctx, f, false, nth) };
+    // Variant 0 is the benchmark; 1 and 2 fill the weeks in between. The
+    // second day of a type in a week is offset so it never matches the first.
+    if (f.startsWith('wod') || f === 'hiit-emom') return { wod: [0, 1, 2].map(v => wodMoves(ctx, f, false, nth + 2 * v)) };
     return {};
   });
 }
 
 function makeCtx(inputs: PlanInputs, seed: number, gear: Gear): Ctx {
-  const base = { gear, lowImpact: (inputs.age ?? 0) >= 60, rand: rng(seed) };
+  const base = { seed, gear, lowImpact: (inputs.age ?? 0) >= 60, rand: rng(seed) };
   return { ...base, order: buildOrder(base) };
 }
 
@@ -770,18 +914,20 @@ export function generatePlan(inputs: PlanInputs, seed: number, now = new Date())
   const weeks: PlanWeek[] = phases.map((phase, wi) => {
     const week = wi + 1;
     const variant = phase === 'deload' ? 0 : wi % 2;
+    // Benchmark movements in week 1 and the retest week; others alternate.
+    const wodVariant = week === 1 || week === phases.length ? 0 : 1 + (week % 2);
     return {
       week,
       label: `Week ${week} — ${PHASE_LABEL[phase]}`,
       phase,
       progressionNote: PHASE_NOTE[phase],
       workouts: focuses.map((focus, di) => {
-        const { sections, moves } = buildWorkout(ctx, focus, phase, variant, minutes, slots[di]);
+        const { sections, moves, mode } = buildWorkout(ctx, focus, minutes, slots[di], { phase, variant, wodVariant, week: wi, day: di });
         const bench = di === benchDay && (week === 1 || week === phases.length);
         return {
           id: `${id}-w${week}d${di + 1}`,
           day: DAYS[di],
-          title: titleFor(focus, sections, gear),
+          title: titleFor(focus, sections, mode),
           type: FOCUS_TYPE[focus],
           focus,
           duration: splitSession(minutes).total,
@@ -793,7 +939,7 @@ export function generatePlan(inputs: PlanInputs, seed: number, now = new Date())
     };
   });
 
-  return { id, createdAt: now.toISOString(), inputsKey: planInputsKey(inputs), weeks };
+  return { id, version: GENERATOR_VERSION, createdAt: now.toISOString(), inputsKey: planInputsKey(inputs), weeks };
 }
 
 // ── Travel ────────────────────────────────────────────────────────────────────
@@ -826,12 +972,12 @@ export function generateTravelWorkouts(inputs: PlanInputs, seed: number): any[] 
   }
   const slots = prepareSlots(ctx, focuses, minutes);
   return focuses.map((focus, i) => {
-    const { sections, moves } = buildWorkout(ctx, focus, 'load', 0, minutes, slots[i]);
+    const { sections, moves, mode } = buildWorkout(ctx, focus, minutes, slots[i], { phase: 'load', variant: 0, wodVariant: 0, week: 0, day: i });
     return {
       id: `t${seed.toString(36)}-${i + 1}`,
       day: 'Travel',
       travel: true,
-      title: titleFor(focus, sections, gear),
+      title: titleFor(focus, sections, mode),
       type: FOCUS_TYPE[focus],
       focus,
       duration: splitSession(minutes).total,
@@ -865,6 +1011,18 @@ export function estimateMinutes(workout: any): number {
 
 export function catalogNames(): string[] {
   return CATALOG.map(e => e.name);
+}
+
+// Every exercise name a generated plan can announce (sides merged), so the
+// voice assets can cover them: catalog moves, warm-up drills, stretches and
+// cardio pieces.
+export function spokenMoveNames(): string[] {
+  return [...new Set([
+    ...CATALOG.map(e => e.name),
+    ...WARMUP_DRILLS.map(m => m.name),
+    ...COOLDOWN_STRETCHES.map(m => m.name),
+    ...CARDIO_MODES.flatMap(m => [m.steady, m.hard, m.easy]),
+  ])];
 }
 
 export function isBodyweightMove(name: string): boolean {

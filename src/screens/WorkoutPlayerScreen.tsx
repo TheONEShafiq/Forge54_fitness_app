@@ -9,7 +9,7 @@ import { getAutoStart } from '../store/settingsStore';
 import type { WorkoutLog, ExerciseLog } from '../store/workoutStore';
 import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { speak, stopSpeech, playBell, speakCue, preloadCues, releaseCues } from '../utils/ttsService';
+import { speak, stopSpeech, playBell, speakCue, preloadCues, releaseCues, isAnnouncing } from '../utils/ttsService';
 import {
   INTERVAL_MAP, SUBS, getSubs,
   flattenExercises, buildExerciseAnnouncementText,
@@ -49,6 +49,11 @@ const COUNTDOWN_CUES = ['3', '2', '1'];
 // the player moves on by itself, so the exercise announcement fits before 3-2-1.
 const LEAD_IN_SEC = 3;
 const AUTO_LEAD_IN_SEC = 5;
+// A lead-in or rest waits at "4" while the announcement is still speaking, so
+// 3-2-1 never talks over it. Work timers never wait; the cap keeps a stuck
+// audio callback from stalling the workout.
+const HOLD_STEP_MS = 200;
+const MAX_HOLD_MS = 6000;
 
 const BLOCK_LABEL: Record<string, string> = { emom: 'EMOM', amrap: 'AMRAP', fortime: 'FOR TIME' };
 function blockCfg(ex: any): BlockConfig {
@@ -103,7 +108,7 @@ export default function WorkoutPlayerScreen() {
   const blockRoundsRef = useRef(0);
 
   const tickRef = useRef<any>(null);
-  const phaseRef = useRef<{ deadline: number; onDone: () => void; shown: number; pausedMsLeft: number | null } | null>(null);
+  const phaseRef = useRef<{ deadline: number; onDone: () => void; shown: number; pausedMsLeft: number | null; mode: TimerMode; heldMs: number } | null>(null);
   const sessionRef = useRef<any>(null);
   const autoStartRef = useRef(true);
   // Set by a natural hand-off to the next exercise: the rest (seconds) that
@@ -220,6 +225,12 @@ export default function WorkoutPlayerScreen() {
     const msLeft = p.deadline - Date.now();
     const sec = Math.max(0, Math.ceil(msLeft / 1000));
     if (sec !== p.shown) {
+      if (sec === 3 && (p.mode === 'countdown' || p.mode === 'rest') && p.heldMs < MAX_HOLD_MS && isAnnouncing()) {
+        p.deadline += HOLD_STEP_MS;
+        p.heldMs += HOLD_STEP_MS;
+        tickRef.current = setTimeout(scheduleTick, HOLD_STEP_MS);
+        return;
+      }
       p.shown = sec;
       if (sec === 0) {
         phaseRef.current = null;
@@ -242,7 +253,7 @@ export default function WorkoutPlayerScreen() {
 
   function startPhase(seconds: number, mode: TimerMode, onDone: () => void) {
     stopPhase();
-    phaseRef.current = { deadline: Date.now() + seconds * 1000, onDone, shown: -1, pausedMsLeft: null };
+    phaseRef.current = { deadline: Date.now() + seconds * 1000, onDone, shown: -1, pausedMsLeft: null, mode, heldMs: 0 };
     setTimerMode(mode);
     setTimerRunning(true);
     scheduleTick();
