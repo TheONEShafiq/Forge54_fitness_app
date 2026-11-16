@@ -86,9 +86,17 @@ const pairsOk = allEx(p).every((e: any, i: number, xs: any[]) =>
 assert(pairsOk, 'every (Right) is followed by its (Left)');
 
 // Progression: same moves across a slot, dose changes
-const w1 = mainEx(p.weeks[0].workouts[0]).map((e: any) => e.name).join();
-const w3 = mainEx(p.weeks[2].workouts[0]).map((e: any) => e.name).join();
-assert(w1 === w3, 'week 3 repeats week 1 moves');
+const base1 = (wo: any) => [...new Set(mainEx(wo).map((e: any) => e.name.replace(/ \((Right|Left)\)$/, '')))];
+const strengthDays = (pl: any, focus: string) => pl.weeks.map((w: any) => w.workouts.find((x: any) => x.focus === focus));
+for (const focus of ['strength-a', 'strength-b']) {
+  const days = strengthDays(p, focus).map(base1);
+  assert(days.every((d: string[]) => d.slice(0, 2).join() === days[0].slice(0, 2).join()), `${focus}: anchor lifts are the same every week (${days[0].slice(0, 2).join(', ')})`);
+  assert(days.slice(1).every((d: string[], i: number) => d.slice(2).join() !== days[i].slice(2).join()), `${focus}: accessories change week to week`);
+}
+const st1 = generatePlan({ ...base, workoutTypes: ['strength'] }, 42);
+const lowerDays = strengthDays(st1, 'strength-lower').map(base1);
+assert(lowerDays.every((d: string[]) => d.slice(0, 2).join() === lowerDays[0].slice(0, 2).join()) && lowerDays[0].join() !== lowerDays[1].join(),
+  'strength style: anchors fixed, accessories rotate');
 const r1 = mainEx(p.weeks[0].workouts[0])[0], r5 = mainEx(p.weeks[4].workouts[0])[0], r6 = mainEx(p.weeks[5].workouts[0])[0];
 assert(r5.weight > r1.weight || r5.reps !== r1.reps, `peak week changes the dose (${r1.reps}@${r1.weight} → ${r5.reps}@${r5.weight})`);
 assert(r6.sets < r5.sets, 'deload has fewer sets');
@@ -101,13 +109,45 @@ assert(blockNames(bench[0]) === blockNames(bench[1]), 'retest uses the same move
 
 // Week-to-week variety
 const sec = (wo: any, re: RegExp) => wo.sections.find((x: any) => re.test(x.name)).exercises.map((e: any) => e.name).join();
-const amrapDay = p.weeks[0].workouts.findIndex((x: any) => x.benchmarkWorkout);
-assert(blockNames(p.weeks[1].workouts[amrapDay]) !== blockNames(p.weeks[0].workouts[amrapDay]), 'week 2 benchmark-style day uses different movements than week 1');
+// Mixed moves days around, so compare the benchmark focus wherever it falls;
+// the crossfit plan keeps a fixed layout and checks the week-2 rule as before.
+const benchFocus = bench[0].focus;
+const midBench = p.weeks.slice(1, -1).flatMap((w: any) => w.workouts.filter((x: any) => x.focus === benchFocus));
+assert(midBench.length > 0 && midBench.every((x: any) => blockNames(x) !== blockNames(bench[0])), 'benchmark-style day uses other movements between benchmark and retest');
+const cfp = generatePlan({ ...base, workoutTypes: ['crossfit'] }, 42);
+const cfBench = cfp.weeks[0].workouts.findIndex((x: any) => x.benchmarkWorkout);
+assert(blockNames(cfp.weeks[1].workouts[cfBench]) !== blockNames(cfp.weeks[0].workouts[cfBench]), 'week 2 benchmark-style day uses different movements than week 1');
 const w1all = p.weeks[0].workouts.map((wo: any) => wo.sections.map((x: any) => x.exercises.map((e: any) => e.name).join()).join('|'));
 const w2all = p.weeks[1].workouts.map((wo: any) => wo.sections.map((x: any) => x.exercises.map((e: any) => e.name).join()).join('|'));
 assert(w1all.every((x: string, i: number) => x !== w2all[i]), 'every day of week 2 differs from week 1');
 const cardioDays = cardioPlan.weeks.slice(0, 2).flatMap(w => w.workouts.map((x: any) => x.title));
 assert(new Set(cardioDays).size > 2, 'cardio rotates machines when there are several: ' + [...new Set(cardioDays)].join(' / '));
+
+// Mixed (v17): a rotating 4-week program
+const mx = generatePlan({ ...base, programLengthWeeks: 4 }, 42);
+const fx = (w: any) => w.workouts.map((x: any) => x.focus);
+assert(mx.weeks.every((w: any) => ['strength-a', 'strength-b', 'cardio-steady', 'functional'].every(f => fx(w).includes(f))),
+  'mixed: every week has strength A and B, Zone 2 and a functional day');
+assert(mx.weeks.every((w: any, i: number) => i === 0 || fx(w).join() !== fx(mx.weeks[i - 1]).join()), 'mixed: the day order changes every week');
+const hardDay = mx.weeks.map((w: any) => fx(w).find((f: string) => f.startsWith('wod') || f === 'cardio-vo2'));
+assert(new Set(hardDay).size >= 3, 'mixed: the hard day rotates formats: ' + hardDay.join(' / '));
+assert(mx.weeks[0].workouts.some((x: any) => x.benchmarkWorkout) && mx.weeks[3].workouts.some((x: any) => x.benchmarkWorkout), 'mixed: benchmark in week 1, retest in week 4');
+const hardIdx = (w: any) => w.workouts.map((x: any, i: number) => /^(wod|cardio-vo2|functional)/.test(x.focus) ? i : -1).filter((i: number) => i >= 0);
+assert(mx.weeks.every((w: any) => hardIdx(w).every((i: number, k: number, xs: number[]) => k === 0 || i - xs[k - 1] > 1)),
+  'mixed: conditioning-heavy days are never back to back');
+const allMain = new Set(mx.weeks.flatMap((w: any) => w.workouts.flatMap(base1)));
+assert(allMain.size >= 35, `mixed: wide movement variety over 4 weeks (${allMain.size} distinct)`);
+const func = mx.weeks.map((w: any) => w.workouts.find((x: any) => x.focus === 'functional'));
+assert(func.every((x: any) => x.sections.some((s: any) => s.name === 'Power') && x.sections.some((s: any) => s.name === 'Carry & Balance')), 'functional day: power, then carries and balance');
+assert(func.filter((x: any) => x.sections.some((s: any) => /Finisher/.test(s.name))).length >= 3, 'functional day: finisher on most weeks at 35 min');
+assert(new Set(func.map((x: any) => base1(x).join())).size === 4, 'functional day: different moves every week');
+const vo2 = mx.weeks.flatMap((w: any) => w.workouts.filter((x: any) => x.focus === 'cardio-vo2'));
+assert(vo2.length > 0 && vo2.every((x: any) => mainEx(x)[0].duration >= 180 && mainEx(x)[0].sets <= 4), '4x4 day: 3–4 minute efforts, at most 4');
+const squatAnchor = mainEx(strengthDays(mx, 'strength-a')[0])[0];
+assert(squatAnchor.weight === 50, `anchor lift uses the heaviest implement (${squatAnchor.name} @ ${squatAnchor.weight})`);
+const overheadDays = mx.weeks.map((w: any) => w.workouts.filter((x: any) => mainEx(x).some((e: any) => /Shoulder Press|Overhead Press|Pike Push-Up|Push Press|Thruster|Snatch/.test(e.name))).length);
+assert(overheadDays.every((n: number) => n <= 3), 'overhead pressing on at most 3 days a week: ' + overheadDays.join());
+assert(weekFocuses(['mixed']).join() === 'strength-lower,wod-emom,cardio-intervals,strength-upper,wod-amrap', 'mixed travel rotation unchanged');
 
 // Warm-up and cool-down follow the day's work
 const st = generatePlan({ ...base, workoutTypes: ['strength'] }, 42).weeks[0].workouts;

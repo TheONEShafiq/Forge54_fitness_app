@@ -82,7 +82,7 @@ export function travelGear(setup: TravelSetup, packed: TravelGear[]): Gear {
 }
 
 // ── Exercise catalog ──────────────────────────────────────────────────────────
-type Pattern = 'squat' | 'hinge' | 'lunge' | 'push' | 'pull' | 'core' | 'carry' | 'power' | 'conditioning';
+type Pattern = 'squat' | 'hinge' | 'lunge' | 'push' | 'pull' | 'core' | 'carry' | 'power' | 'conditioning' | 'balance';
 type Load = 'db' | 'kb' | 'sandbag' | 'vest';
 type Role = 'heavy' | 'medium' | 'light';
 
@@ -94,6 +94,7 @@ interface CatalogEx {
   role?: Role;            // which weight to pick from the user's set
   needs?: GearFlag[];     // all required
   sides?: boolean;        // authored as (Right)/(Left) pairs
+  plane?: 'v';            // vertical (overhead) press; other pushes are horizontal
   impact?: boolean;       // jumping — left out for 60+ unless nothing else fits
   reps?: number;          // strength reps (foundation)
   blockReps?: number;     // reps inside an EMOM / AMRAP / For Time
@@ -131,12 +132,12 @@ const CATALOG: CatalogEx[] = [
   // Push
   { name: 'DB Bench Press', pattern: 'push', kind: 'sets', load: ['db'], role: 'heavy', needs: ['bench'], reps: 10, cue: 'Shoulder blades pinned. Lower to the chest, press up and slightly in.' },
   { name: 'DB Floor Press', pattern: 'push', kind: 'sets', load: ['db'], role: 'heavy', reps: 10, blockReps: 10, cue: 'Elbows touch the floor at 45 degrees. Pause, press.' },
-  { name: 'DB Shoulder Press', pattern: 'push', kind: 'sets', load: ['db'], role: 'light', reps: 10, blockReps: 10, cue: 'Ribs down, glutes tight. Press straight overhead, biceps by the ears.' },
-  { name: 'KB Overhead Press', pattern: 'push', kind: 'sets', load: ['kb'], role: 'light', sides: true, reps: 8, cue: 'Bell in the rack. Brace and press. Lock out with the bicep by the ear.' },
+  { name: 'DB Shoulder Press', pattern: 'push', plane: 'v', kind: 'sets', load: ['db'], role: 'light', reps: 10, blockReps: 10, cue: 'Ribs down, glutes tight. Press straight overhead, biceps by the ears.' },
+  { name: 'KB Overhead Press', pattern: 'push', plane: 'v', kind: 'sets', load: ['kb'], role: 'light', sides: true, reps: 8, cue: 'Bell in the rack. Brace and press. Lock out with the bicep by the ear.' },
   { name: 'Band Chest Press', pattern: 'push', kind: 'sets', needs: ['bands'], reps: 15, blockReps: 15, cue: 'Band behind the back. Press forward, squeeze the chest.' },
   { name: 'Push-Up', pattern: 'push', kind: 'sets', reps: 12, blockReps: 10, cue: 'Body in one straight line. Chest to the floor, full lockout.' },
   { name: 'Incline Push-Up', pattern: 'push', kind: 'sets', reps: 15, blockReps: 12, cue: 'Hands on a bench, chair or bed. Straight line, chest to the edge.' },
-  { name: 'Pike Push-Up', pattern: 'push', kind: 'sets', reps: 10, blockReps: 8, cue: 'Hips high. Lower the head between the hands, press back up.' },
+  { name: 'Pike Push-Up', pattern: 'push', plane: 'v', kind: 'sets', reps: 10, blockReps: 8, cue: 'Hips high. Lower the head between the hands, press back up.' },
   { name: 'Chair Dip', pattern: 'push', kind: 'sets', reps: 12, blockReps: 10, cue: 'Hands on a sturdy chair or bench. Elbows straight back.' },
   // Pull
   { name: 'Pull-Up', pattern: 'pull', kind: 'sets', needs: ['pullup'], reps: 6, blockReps: 5, cue: 'Dead hang to chin over the bar. Use a band or jump if you need it.' },
@@ -162,6 +163,11 @@ const CATALOG: CatalogEx[] = [
   { name: 'Suitcase Carry', pattern: 'carry', kind: 'time', load: ['kb', 'db'], role: 'heavy', sides: true, seconds: 40, cue: 'One side only. Resist leaning. Shoulders level.' },
   { name: 'Sandbag Bear-Hug Carry', pattern: 'carry', kind: 'time', load: ['sandbag'], role: 'heavy', seconds: 45, cue: 'Hug the bag high. Brace and walk.' },
   { name: 'Ruck March', pattern: 'carry', kind: 'time', needs: ['ruck'], seconds: 120, cue: 'Loaded pack, brisk walk. Tall posture.' },
+  // Balance: single-leg control and getting up and down off the floor.
+  { name: 'Single-Leg Balance Reach', pattern: 'balance', kind: 'time', sides: true, seconds: 30, cue: 'Stand on one leg, soft knee. Reach the other foot forward, side and back. Hips level.' },
+  { name: 'Backward Walk', pattern: 'balance', kind: 'time', seconds: 40, cue: 'Walk backward, heel-toe, slow and tall. Clear space behind you.' },
+  { name: 'Turkish Get-Up', pattern: 'balance', kind: 'sets', load: ['kb', 'db'], role: 'light', sides: true, reps: 2, cue: 'Eyes on the weight, arm locked. Elbow, hand, bridge, sweep the leg, stand. Reverse it slowly.' },
+  { name: 'Single-Leg Box Step-Down', pattern: 'balance', kind: 'sets', needs: ['box'], sides: true, reps: 8, cue: 'Stand on the box, lower the other heel to the floor in 3 seconds. Knee tracks over the toe.' },
   // Power
   { name: 'KB Swing', pattern: 'power', kind: 'sets', load: ['kb'], role: 'medium', reps: 15, blockReps: 15, cue: 'Hike, snap the hips. Bell floats to chest height. Arms are just hooks.' },
   { name: 'DB Snatch', pattern: 'power', kind: 'sets', load: ['db'], role: 'light', sides: true, reps: 6, blockReps: 6, cue: 'Hinge, explode, punch the dumbbell overhead in one move.' },
@@ -222,7 +228,9 @@ export interface PlanWeek {
 // Bumped when the generator's output changes in a way existing plans should
 // pick up (planStore upgrades them in place). 16: region-based warm-up and
 // cool-down, week-to-week rotation of benchmark-style and cardio days.
-export const GENERATOR_VERSION = 16;
+// 17: rotating mixed template (functional day, Zone 2, 4x4), fixed anchor
+// lifts with weekly accessory rotation, balance moves.
+export const GENERATOR_VERSION = 17;
 
 export interface Plan {
   id: string;
@@ -299,7 +307,10 @@ type Focus =
   | 'hiit-circuit' | 'hiit-emom'
   | 'wod-amrap' | 'wod-emom' | 'wod-fortime'
   | 'cardio-steady' | 'cardio-intervals'
-  | 'bw-circuit';
+  | 'bw-circuit'
+  // v17 "mixed" program: two full-body strength days, a power / carry /
+  // balance day, Zone 2 and 4x4 intervals.
+  | 'strength-a' | 'strength-b' | 'functional' | 'cardio-vo2';
 
 const FOCUS_QUEUE: Record<WorkoutType, Focus[]> = {
   strength: ['strength-lower', 'strength-upper', 'strength-full'],
@@ -335,7 +346,31 @@ const FOCUS_TYPE: Record<Focus, string> = {
   'wod-amrap': 'power', 'wod-emom': 'power', 'wod-fortime': 'power',
   'cardio-steady': 'cardio', 'cardio-intervals': 'cardio',
   'bw-circuit': 'strength',
+  'strength-a': 'strength', 'strength-b': 'strength', 'functional': 'athletic', 'cardio-vo2': 'cardio',
 };
+
+// Mixed (the default style) gets a rotating 4-week template instead of the
+// same five days every week. Each week has two full-body strength days, one
+// functional day (power, carries, balance, short finisher), Zone 2, and one
+// hard day that alternates between a benchmark-style block and 4x4 intervals.
+// Hard days aren't stacked, and the benchmark AMRAP opens week 1 and closes
+// the last week as the retest.
+const MIXED_WEEKS: Focus[][] = [
+  ['strength-a', 'cardio-steady', 'wod-amrap', 'strength-b', 'functional'],
+  ['strength-b', 'cardio-vo2', 'strength-a', 'cardio-steady', 'functional'],
+  ['strength-a', 'wod-fortime', 'cardio-steady', 'functional', 'strength-b'],
+  ['strength-b', 'cardio-steady', 'functional', 'strength-a', 'wod-amrap'],
+];
+
+function usesMixedTemplate(types: WorkoutType[]): boolean {
+  return types.length === 0 || (types.length === 1 && types[0] === 'mixed');
+}
+
+// The day focuses for week `wi` (0-based) of an `n`-week plan.
+export function focusesForWeek(types: WorkoutType[], wi: number, n: number): Focus[] {
+  if (!usesMixedTemplate(types)) return weekFocuses(types);
+  return MIXED_WEEKS[wi === n - 1 ? 3 : wi % 3];
+}
 
 // ── Exercise selection ────────────────────────────────────────────────────────
 interface Ctx {
@@ -383,13 +418,19 @@ function buildOrder(ctx: Omit<Ctx, 'order'>): Map<Pattern, CatalogEx[]> {
   return order;
 }
 
-interface PickOpts { kind?: 'sets' | 'time'; noSides?: boolean; bodyweight?: boolean }
+interface PickOpts { kind?: 'sets' | 'time'; noSides?: boolean; bodyweight?: boolean; heaviest?: boolean }
+
+// A pattern, or a press restricted to one plane.
+type Slot = Pattern | 'push-h' | 'push-v';
 
 // The `variant`-th suitable option for a pattern, skipping moves already in
 // this workout. Variant 0 and 1 give the A/B weeks their different exercises.
-function pick(ctx: Ctx, pattern: Pattern, used: Set<string>, variant = 0, o: PickOpts = {}): CatalogEx | null {
+function pick(ctx: Ctx, slot: Slot, used: Set<string>, variant = 0, o: PickOpts = {}): CatalogEx | null {
+  const pattern: Pattern = slot === 'push-h' || slot === 'push-v' ? 'push' : slot;
+  const plane = slot === 'push-v' ? 'v' : slot === 'push-h' ? undefined : null;
   const options = (ctx.order.get(pattern) ?? []).filter(e =>
     !used.has(e.name) &&
+    (plane === null || e.plane === plane) &&
     (!o.kind || e.kind === o.kind) &&
     (!o.noSides || !e.sides) &&
     (!o.bodyweight || (!e.load && !e.needs?.length)));
@@ -397,7 +438,11 @@ function pick(ctx: Ctx, pattern: Pattern, used: Set<string>, variant = 0, o: Pic
   // 60+: later variants must not wander into the jumping moves sorted last.
   const calm = ctx.lowImpact ? options.filter(e => !e.impact) : options;
   const pool = calm.length ? calm : options;
-  const ex = pool[variant % pool.length];
+  // Anchor lifts take the heaviest load the user owns (a 50lb kettlebell
+  // over a 25lb dumbbell); ties keep the plan's order.
+  const ex = o.heaviest
+    ? pool.reduce((best, e) => weightFor(e, ctx.gear, 0) > weightFor(best, ctx.gear, 0) ? e : best, pool[0])
+    : pool[variant % pool.length];
   used.add(ex.name);
   return ex;
 }
@@ -469,6 +514,7 @@ const PATTERN_REGIONS: Record<Pattern, Region[]> = {
   carry: ['upperback', 'arms', 'hips'],
   power: ['hamstrings', 'glutes', 'hips', 'shoulders'],
   conditioning: ['calves', 'hips', 'quads', 'shoulders'],
+  balance: ['hips', 'glutes', 'calves'],
 };
 
 const CARDIO_REGIONS: Record<string, Region[]> = {
@@ -596,10 +642,18 @@ function cooldownSection(minutes: number, g: Gear, weights: Map<Region, number>,
 }
 
 // ── Main blocks ───────────────────────────────────────────────────────────────
-const STRENGTH_PATTERNS: Partial<Record<Focus, Pattern[]>> = {
+// The first ANCHORS slots are the day's main lifts: the same move every week
+// of the plan, so the load and reps can progress against something fixed.
+// The rest are accessories that change week to week. (Fixed main lifts with
+// planned variation around them beat random rotation for strength; variety
+// mainly helps motivation.)
+const ANCHORS = 2;
+const STRENGTH_PATTERNS: Partial<Record<Focus, Slot[]>> = {
   'strength-lower': ['squat', 'hinge', 'lunge', 'carry', 'core', 'power'],
-  'strength-upper': ['push', 'pull', 'push', 'pull', 'core', 'carry'],
-  'strength-full': ['squat', 'push', 'hinge', 'pull', 'lunge', 'core'],
+  'strength-upper': ['push-h', 'pull', 'push-v', 'pull', 'core', 'carry'],
+  'strength-full': ['squat', 'push-h', 'hinge', 'pull', 'lunge', 'core'],
+  'strength-a': ['squat', 'push-h', 'pull', 'lunge', 'core', 'carry'],
+  'strength-b': ['hinge', 'pull', 'push-v', 'lunge', 'carry', 'core'],
 };
 
 function exSeconds(ex: CatalogEx, sets: number, rest: number): number {
@@ -607,18 +661,24 @@ function exSeconds(ex: CatalogEx, sets: number, rest: number): number {
   return sets * ((ex.sides ? 2 : 1) * work + rest);
 }
 
-// Moves chosen once per (focus, variant) so every week of a slot uses the same
-// exercises and only the dose changes — progression you can compare.
-function chooseStrength(ctx: Ctx, focus: Focus, mainMin: number, variant: number, bodyweight: boolean): CatalogEx[] {
+// Anchors are the same for every `variant`; accessories take the
+// `variant`-th option, skipping `avoid` (another strength day's anchors, so
+// Monday's accessory isn't Thursday's main lift).
+function chooseStrength(ctx: Ctx, focus: Focus, mainMin: number, variant: number, bodyweight: boolean, avoid: Set<string> = new Set()): CatalogEx[] {
   const patterns = STRENGTH_PATTERNS[focus] ?? STRENGTH_PATTERNS['strength-full']!;
   const used = new Set<string>();
   const chosen: CatalogEx[] = [];
   let budget = mainMin * 60;
   for (let round = 0; round < 3; round++) {
-    for (const p of patterns) {
-      const ex = pick(ctx, p, used, variant, { bodyweight });
+    for (const [i, p] of patterns.entries()) {
+      const anchor = round === 0 && i < ANCHORS;
+      const ex = anchor
+        ? pick(ctx, p, used, 0, { bodyweight, heaviest: !bodyweight })
+        : pick(ctx, p, new Set([...used, ...avoid]), variant, { bodyweight });
+      if (ex) used.add(ex.name);
       if (!ex) continue;
-      const cost = exSeconds(ex, BUDGET_DOSE.sets, BUDGET_DOSE.rest);
+      // Accessories are budgeted a set lighter than the anchors.
+      const cost = exSeconds(ex, BUDGET_DOSE.sets - (anchor ? 0 : 1), BUDGET_DOSE.rest);
       // Short sessions may get a single move rather than run long.
       if (chosen.length >= (mainMin >= 15 ? 2 : 1) && cost > budget + 60) { used.delete(ex.name); continue; }
       chosen.push(ex);
@@ -631,12 +691,16 @@ function chooseStrength(ctx: Ctx, focus: Focus, mainMin: number, variant: number
 
 // Sets fill the session: as many as the chosen moves need to reach the main
 // block's minutes at load-week rest (2–6), one fewer on deload.
+// Anchors (the first ANCHORS moves) get one set more than accessories.
 function strengthSection(moves: CatalogEx[], phase: Phase, g: Gear, mainMin: number) {
   const d = DOSE[phase];
-  const perSet = moves.reduce((t, ex) => t + exSeconds(ex, 1, BUDGET_DOSE.rest), 0);
-  const fill = Math.max(2, Math.min(6, Math.round((mainMin * 60) / Math.max(perSet, 1))));
-  const sets = phase === 'deload' ? Math.max(2, fill - 1) : fill;
-  const exercises = moves.flatMap(ex => {
+  const accSets = (n: number) => Math.max(2, n - 1);
+  const cost = (n: number) => moves.reduce((t, ex, i) => t + exSeconds(ex, i < ANCHORS ? n : accSets(n), BUDGET_DOSE.rest), 0);
+  let fill = 2;
+  while (fill < 6 && cost(fill + 1) <= mainMin * 60 * 1.05) fill++;
+  const anchorSets = phase === 'deload' ? Math.max(2, fill - 1) : fill;
+  const exercises = moves.flatMap((ex, i) => {
+    const sets = i < ANCHORS ? anchorSets : accSets(anchorSets);
     const weight = weightFor(ex, g, d.weightStep);
     const loaded = weight > 0;
     const reps = ex.kind === 'sets' ? Math.max(4, (ex.reps ?? 10) + (loaded ? d.repsDelta : d.bwRepsDelta)) : undefined;
@@ -755,6 +819,112 @@ function wodSections(focus: Focus, moves: CatalogEx[], mainMin: number, g: Gear,
   return sections;
 }
 
+// ── Functional day ────────────────────────────────────────────────────────────
+// Power first while fresh (muscle power fades faster with age than strength,
+// and fast lifts train it), then a carry / balance circuit, then a short
+// finisher whose format alternates week to week.
+interface FunctionalMoves { power: CatalogEx[]; circuit: CatalogEx[]; finisher: CatalogEx[] }
+
+function functionalMoves(ctx: Ctx, variant: number): FunctionalMoves {
+  const used = new Set<string>();
+  const one = (slot: Slot, o: PickOpts = {}) => pick(ctx, slot, used, variant, o);
+  const some = (xs: (CatalogEx | null)[]) => xs.filter((e): e is CatalogEx => !!e);
+  return {
+    power: some([one('power', { kind: 'sets', noSides: true }), one('power', { kind: 'sets', noSides: true })]),
+    circuit: some([one('carry'), one('balance')]),
+    finisher: some([
+      one('conditioning', { noSides: true }),
+      one(variant % 2 ? 'push-h' : 'squat', { noSides: true, kind: 'sets' }),
+    ]),
+  };
+}
+
+const POWER_REST = 75;
+const POWER_SETS: Record<Phase, number> = { foundation: 3, load: 3, peak: 3, deload: 2 };
+
+function functionalSections(m: FunctionalMoves, phase: Phase, mainMin: number, g: Gear, week: number): any[] {
+  const sections: any[] = [];
+  let left = mainMin * 60;
+  const sets = POWER_SETS[phase];
+  // Fewer power moves on a short day so the circuit still fits.
+  const power = mainMin < 18 ? m.power.slice(0, 1) : m.power;
+  if (power.length) {
+    const exercises = power.flatMap(ex => toExercises(ex, {
+      sets,
+      // Low reps, done fast: stop the set before the speed drops.
+      reps: Math.max(5, Math.round((ex.reps ?? 10) * 0.6)),
+      weight: weightFor(ex, g, 0),
+      rest: POWER_REST,
+    }));
+    const sec = power.reduce((t, ex) => t + exSeconds(ex, sets, POWER_REST), 0);
+    left -= sec;
+    sections.push({ name: 'Power', duration: Math.round(sec / 60), exercises });
+  }
+  if (m.circuit.length) {
+    const perRound = m.circuit.reduce((t, ex) => t + exSeconds(ex, 1, 15), 0) + 45;
+    const finisherMin = mainMin >= 18 ? 6 : 0;
+    const rounds = Math.max(2, Math.min(4, Math.floor((left - finisherMin * 60) / perRound)));
+    sections.push({
+      name: 'Carry & Balance', duration: Math.round((rounds * perRound - 45) / 60),
+      circuitRounds: rounds, restBetweenRounds: 45,
+      exercises: m.circuit.flatMap(ex => toExercises(ex, {
+        sets: rounds,
+        reps: ex.kind === 'sets' ? ex.reps : undefined,
+        seconds: ex.seconds,
+        weight: weightFor(ex, g, 0),
+        rest: 15,
+      })),
+    });
+    left -= rounds * perRound - 45;
+  }
+  const mins = Math.floor(left / 60) - 1;
+  if (mins >= 4 && m.finisher.length) {
+    const movements = m.finisher.map(ex => blockMovement(ex, g));
+    if (week % 2 === 0) {
+      const even = Math.max(movements.length, Math.floor(mins / movements.length) * movements.length);
+      sections.push({
+        name: `Finisher — EMOM ${even}`, duration: even, emom: true, restAfter: 60,
+        emomNote: 'Start each movement at the top of the minute. Rest whatever is left.',
+        exercises: movements,
+      });
+    } else {
+      sections.push({
+        name: `Finisher — ${mins}-min AMRAP`, duration: mins, amrap: true, restAfter: 60,
+        amrapNote: `As many rounds as possible in ${mins} minutes. Tap +1 ROUND after each full round.`,
+        exercises: movements,
+      });
+    }
+  }
+  return sections;
+}
+
+// Norwegian 4x4: four-minute efforts at about 85–95% of max heart rate with
+// three easy minutes between. Built up over the block, cut back on deload.
+const VO2_SHAPE: Record<Phase, [number, number]> = {
+  foundation: [180, 120], load: [240, 180], peak: [240, 150], deload: [120, 180],
+};
+
+function vo2Sections(mainMin: number, mode: CardioMode, phase: Phase): any[] {
+  const [work, rest] = VO2_SHAPE[phase];
+  const rounds = Math.max(2, Math.min(4, Math.floor((mainMin * 60 + rest) / (work + rest))));
+  const sections: any[] = [{
+    name: 'Intervals', duration: Math.round((rounds * (work + rest)) / 60),
+    exercises: [{
+      name: mode.hard, type: 'time', duration: work, sets: rounds, weight: 0, rest,
+      cue: `${rounds} rounds: ${work / 60} minutes hard, about 85 to 95% of max heart rate. ${rest / 60} minutes easy between.`,
+    }],
+  }];
+  // Long sessions finish with easy aerobic work rather than a fifth interval.
+  const extra = mainMin - Math.round((rounds * (work + rest)) / 60);
+  if (extra >= 5) {
+    sections.push({
+      name: 'Steady State', duration: extra,
+      exercises: [{ name: mode.steady, type: 'time', duration: extra * 60, sets: 1, weight: 0, cue: 'Zone 2 — conversational pace.' }],
+    });
+  }
+  return sections;
+}
+
 // Two interval shapes per phase; alternate weeks use the other one.
 const INTERVALS: Record<Phase, [number, number]>[] = [
   { foundation: [60, 60], load: [90, 60], peak: [60, 30], deload: [45, 90] },
@@ -781,13 +951,17 @@ function cardioSections(focus: Focus, mainMin: number, mode: CardioMode, phase: 
 }
 
 // ── Workout assembly ──────────────────────────────────────────────────────────
-interface SlotMoves { strength?: CatalogEx[][]; hiit?: CatalogEx[][]; wod?: CatalogEx[][] }
+interface SlotMoves { strength?: CatalogEx[]; hiit?: CatalogEx[]; wod?: CatalogEx[]; functional?: FunctionalMoves }
 
 function titleFor(focus: Focus, sections: any[], mode: CardioMode): string {
   switch (focus) {
     case 'strength-lower': return 'Lower Body Strength';
     case 'strength-upper': return 'Upper Body Strength';
     case 'strength-full': return 'Full-Body Strength';
+    case 'strength-a': return 'Full-Body Strength A';
+    case 'strength-b': return 'Full-Body Strength B';
+    case 'functional': return 'Functional Power';
+    case 'cardio-vo2': return `4×4 Intervals — ${mode.label}`;
     case 'bw-circuit': return 'Bodyweight Strength Circuit';
     case 'hiit-circuit': return 'HIIT Circuit';
     case 'hiit-emom': return 'HIIT EMOM';
@@ -829,35 +1003,40 @@ function equipmentOf(sections: any[], movesUsed: CatalogEx[], g: Gear): string[]
   return all.length ? all : ['Bodyweight'];
 }
 
-// `variant` is the A/B week for strength and HIIT moves; `wodVariant` picks
-// the benchmark-style movements (0 = the benchmark); `week` and `day` rotate
-// cardio machines and seed the warm-up / cool-down choices.
-interface BuildOpts { phase: Phase; variant: number; wodVariant: number; week: number; day: number }
+// `slot` holds this week's moves for the day; `week` and `day` rotate cardio
+// machines and seed the warm-up / cool-down choices.
+interface BuildOpts { phase: Phase; week: number; day: number }
 
 function buildWorkout(
   ctx: Ctx, focus: Focus, minutes: number, slot: SlotMoves, o: BuildOpts,
 ): { sections: any[]; moves: CatalogEx[]; mode: CardioMode } {
-  const { phase, variant } = o;
+  const { phase } = o;
   const split = splitSession(minutes);
   const g = ctx.gear;
   const modes = cardioModes(g);
   const mode = modes[(o.week + o.day) % modes.length];
-  const isCardio = focus === 'cardio-steady' || focus === 'cardio-intervals';
+  const isCardio = focus === 'cardio-steady' || focus === 'cardio-intervals' || focus === 'cardio-vo2';
   let main: any[];
   let moves: CatalogEx[] = [];
   if (focus.startsWith('strength')) {
-    moves = slot.strength![variant];
+    moves = slot.strength!;
     main = [strengthSection(moves, phase, g, split.main)];
   } else if (focus === 'bw-circuit') {
-    moves = slot.strength![variant];
+    moves = slot.strength!;
     main = [circuitSection(moves, phase, split.main)];
   } else if (focus === 'hiit-circuit') {
-    moves = slot.hiit![variant];
+    moves = slot.hiit!;
     main = [hiitCircuit(moves, phase, split.main, g)];
+  } else if (focus === 'functional') {
+    const f = slot.functional!;
+    moves = [...f.power, ...f.circuit, ...f.finisher];
+    main = functionalSections(f, phase, split.main, g, o.week);
+  } else if (focus === 'cardio-vo2' && split.main >= 20) {
+    main = vo2Sections(split.main, mode, phase);
   } else if (isCardio) {
-    main = cardioSections(focus, split.main, mode, phase, o.week);
+    main = cardioSections(focus === 'cardio-vo2' ? 'cardio-intervals' : focus, split.main, mode, phase, o.week);
   } else {
-    moves = slot.wod![o.wodVariant % slot.wod!.length];
+    moves = slot.wod!;
     main = wodSections(focus, moves, split.main, g, phase);
   }
   const weights = regionWeights(moves, isCardio ? mode : null);
@@ -870,22 +1049,42 @@ function buildWorkout(
   };
 }
 
-function prepareSlots(ctx: Ctx, focuses: Focus[], minutes: number): SlotMoves[] {
+// The moves for one day: `nth` is which occurrence of this focus it is in the
+// week (a block type that comes up twice gets different movements the second
+// time), `wi` the 0-based week of an `n`-week plan.
+function slotFor(ctx: Ctx, f: Focus, nth: number, wi: number, n: number, minutes: number, anchorsOf: (f: Focus) => Set<string>): SlotMoves {
   const { main } = splitSession(minutes);
-  // A block type that comes up twice in a week gets different movements the
-  // second time (the first stays the benchmark).
-  const seen: Partial<Record<Focus, number>> = {};
-  return focuses.map(f => {
-    const nth = seen[f] ?? 0;
-    seen[f] = nth + 1;
-    if (f.startsWith('strength')) return { strength: [0, 1].map(v => chooseStrength(ctx, f, main, v, false)) };
-    if (f === 'bw-circuit') return { strength: [0, 1].map(v => chooseStrength(ctx, 'strength-full', Math.max(main, 20), v, true).slice(0, 6)) };
-    if (f === 'hiit-circuit') return { hiit: [0, 1].map(v => hiitMoves(ctx, v)) };
-    // Variant 0 is the benchmark; 1 and 2 fill the weeks in between. The
-    // second day of a type in a week is offset so it never matches the first.
-    if (f.startsWith('wod') || f === 'hiit-emom') return { wod: [0, 1, 2].map(v => wodMoves(ctx, f, false, nth + 2 * v)) };
-    return {};
-  });
+  const last = wi === n - 1;
+  if (f === 'strength-a' || f === 'strength-b') {
+    // A and B take turns through the accessory options; each avoids the
+    // other's main lifts.
+    const other: Focus = f === 'strength-a' ? 'strength-b' : 'strength-a';
+    return { strength: chooseStrength(ctx, f, main, 2 * wi + (f === 'strength-b' ? 1 : 0), false, anchorsOf(other)) };
+  }
+  if (f.startsWith('strength')) return { strength: chooseStrength(ctx, f, main, wi + nth, false) };
+  if (f === 'bw-circuit') return { strength: chooseStrength(ctx, 'strength-full', Math.max(main, 20), wi + nth, true).slice(0, 6) };
+  if (f === 'hiit-circuit') return { hiit: hiitMoves(ctx, (last ? 0 : wi % 2) + nth) };
+  if (f === 'functional') return { functional: functionalMoves(ctx, wi) };
+  // Benchmark-style blocks: the benchmark movements (variant 0) in week 1 and
+  // the retest week; two other sets alternate in the weeks between. The
+  // second day of a type in a week is offset so it never matches the first.
+  if (f.startsWith('wod') || f === 'hiit-emom') {
+    const v = wi === 0 || last ? 0 : 1 + ((wi + 1) % 2);
+    return { wod: wodMoves(ctx, f, false, nth + 2 * v) };
+  }
+  return {};
+}
+
+function slotPicker(ctx: Ctx, minutes: number, n: number) {
+  const cache = new Map<string, SlotMoves>();
+  // Anchors are the same every week, so variant 0's first moves are the anchors.
+  const anchorsOf = (f: Focus) => new Set(
+    chooseStrength(ctx, f, splitSession(minutes).main, 0, false).slice(0, ANCHORS).map(e => e.name));
+  return (f: Focus, nth: number, wi: number): SlotMoves => {
+    const key = `${f}#${nth}#${wi}`;
+    if (!cache.has(key)) cache.set(key, slotFor(ctx, f, nth, wi, n, minutes, anchorsOf));
+    return cache.get(key)!;
+  };
 }
 
 function makeCtx(inputs: PlanInputs, seed: number, gear: Gear): Ctx {
@@ -905,25 +1104,24 @@ export function generatePlan(inputs: PlanInputs, seed: number, now = new Date())
   const gear = effectiveGear(inputs);
   const ctx = makeCtx(inputs, seed, gear);
   const minutes = inputs.sessionMinutes || DEFAULT_SESSION_MINUTES;
-  const focuses = weekFocuses(inputs.workoutTypes);
-  const slots = prepareSlots(ctx, focuses, minutes);
   const phases = phasesFor(inputs.programLengthWeeks);
-  // The first benchmark-style day is retested in the last week.
-  const benchDay = focuses.findIndex(f => f.startsWith('wod'));
+  const n = phases.length;
+  const slotOf = slotPicker(ctx, minutes, n);
+  // Week 1's first benchmark-style day is retested in the last week.
+  const benchFocus = focusesForWeek(inputs.workoutTypes, 0, n).find(f => f.startsWith('wod'));
 
   const weeks: PlanWeek[] = phases.map((phase, wi) => {
     const week = wi + 1;
-    const variant = phase === 'deload' ? 0 : wi % 2;
-    // Benchmark movements in week 1 and the retest week; others alternate.
-    const wodVariant = week === 1 || week === phases.length ? 0 : 1 + (week % 2);
+    const focuses = focusesForWeek(inputs.workoutTypes, wi, n);
+    const nths = focuses.map((f, di) => focuses.slice(0, di).filter(x => x === f).length);
     return {
       week,
       label: `Week ${week} — ${PHASE_LABEL[phase]}`,
       phase,
       progressionNote: PHASE_NOTE[phase],
       workouts: focuses.map((focus, di) => {
-        const { sections, moves, mode } = buildWorkout(ctx, focus, minutes, slots[di], { phase, variant, wodVariant, week: wi, day: di });
-        const bench = di === benchDay && (week === 1 || week === phases.length);
+        const { sections, moves, mode } = buildWorkout(ctx, focus, minutes, slotOf(focus, nths[di], wi), { phase, week: wi, day: di });
+        const bench = focus === benchFocus && nths[di] === 0 && (week === 1 || week === n);
         return {
           id: `${id}-w${week}d${di + 1}`,
           day: DAYS[di],
@@ -955,6 +1153,10 @@ const FOCUS_SUMMARY: Record<Focus, string> = {
   'wod-fortime': 'Set rounds, as fast as you can.',
   'cardio-steady': 'Easy aerobic work to keep the engine running.',
   'cardio-intervals': 'Hard / easy intervals on whatever the hotel has.',
+  'strength-a': 'Squat, push and pull, plus rotating accessories.',
+  'strength-b': 'Hinge, pull and press, plus rotating accessories.',
+  'functional': 'Fast power lifts, carries and balance, then a short finisher.',
+  'cardio-vo2': 'Four-minute hard efforts with easy recoveries.',
 };
 
 // Travel workouts: one per focus in the user's weekly rotation, built for the
@@ -970,9 +1172,9 @@ export function generateTravelWorkouts(inputs: PlanInputs, seed: number): any[] 
     if (focuses.length >= 3) break;
     if (!focuses.includes(extra)) focuses.push(extra);
   }
-  const slots = prepareSlots(ctx, focuses, minutes);
+  const slotOf = slotPicker(ctx, minutes, 1);
   return focuses.map((focus, i) => {
-    const { sections, moves, mode } = buildWorkout(ctx, focus, minutes, slots[i], { phase: 'load', variant: 0, wodVariant: 0, week: 0, day: i });
+    const { sections, moves, mode } = buildWorkout(ctx, focus, minutes, slotOf(focus, 0, 0), { phase: 'load', week: 0, day: i });
     return {
       id: `t${seed.toString(36)}-${i + 1}`,
       day: 'Travel',
