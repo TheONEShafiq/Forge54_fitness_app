@@ -169,6 +169,8 @@ const heaviest = Math.max(...g.db, ...g.kb, ...g.sandbag);
 const capPlans = [...plans, ...[40, 65].flatMap(age => [20, 60].map(m => generatePlan({ ...base, age, sessionMinutes: m, programLengthWeeks: 8 }, 3)))];
 const over = [...new Set(capPlans.flatMap(pl => allEx(pl)).filter((e: any) => e.weight > heaviest).map((e: any) => `${e.name} @ ${e.weight}`))];
 assert(heaviest === 50 && over.length === 0, `no weight above the heaviest owned (${heaviest} lb) ` + over.join());
+const capped = [...new Set(capPlans.flatMap(pl => allEx(pl)).filter((e: any) => /KB Halo|Turkish Get-Up|KB Overhead Press/.test(e.name) && e.weight > 35).map((e: any) => `${e.name} @ ${e.weight}`))];
+assert(capped.length === 0, 'peak week: halo, get-up and one-arm overhead press stay at or under 35 lb ' + capped.join());
 const olderBlocks = loadedIn(generatePlan({ ...base, age: 65, workoutTypes: ['crossfit'] }, 1), isBlock);
 assert(olderBlocks.some((e: any) => /Thruster|Shoulder Press/.test(e.name) && e.weight <= 10), '60+ keeps the lighter block weights');
 

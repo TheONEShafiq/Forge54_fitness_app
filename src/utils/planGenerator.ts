@@ -709,6 +709,11 @@ function chooseStrength(ctx: Ctx, focus: Focus, mainMin: number, variant: number
 // Sets fill the session: as many as the chosen moves need to reach the main
 // block's minutes at load-week rest (2–6), one fewer on deload.
 // Anchors (the first ANCHORS moves) get one set more than accessories.
+// Peak week's step up the rack is for the big lifts. Core and balance drills
+// (halo, Turkish get-up) and one-arm overhead presses would jump to the
+// heaviest bell, so they hold the load-week weight and reps instead.
+const noStepUp = (ex: CatalogEx) => ex.pattern === 'core' || ex.pattern === 'balance' || (ex.plane === 'v' && !!ex.sides);
+
 function strengthSection(moves: CatalogEx[], phase: Phase, g: Gear, mainMin: number) {
   const d = DOSE[phase];
   const accSets = (n: number) => Math.max(2, n - 1);
@@ -718,9 +723,11 @@ function strengthSection(moves: CatalogEx[], phase: Phase, g: Gear, mainMin: num
   const anchorSets = phase === 'deload' ? Math.max(2, fill - 1) : fill;
   const exercises = moves.flatMap((ex, i) => {
     const sets = i < ANCHORS ? anchorSets : accSets(anchorSets);
-    const weight = weightFor(ex, g, d.weightStep);
+    const hold = d.weightStep > 0 && noStepUp(ex);
+    const weight = weightFor(ex, g, hold ? 0 : d.weightStep);
     const loaded = weight > 0;
-    const reps = ex.kind === 'sets' ? Math.max(4, (ex.reps ?? 10) + (loaded ? d.repsDelta : d.bwRepsDelta)) : undefined;
+    const repsDelta = hold && loaded ? DOSE.load.repsDelta : d.repsDelta;
+    const reps = ex.kind === 'sets' ? Math.max(4, (ex.reps ?? 10) + (loaded ? repsDelta : d.bwRepsDelta)) : undefined;
     const seconds = ex.kind === 'time' ? Math.max(20, (ex.seconds ?? 30) + (phase === 'peak' ? 10 : phase === 'deload' ? -10 : 0)) : undefined;
     return toExercises(ex, { sets, reps, seconds, weight, rest: d.rest });
   });
