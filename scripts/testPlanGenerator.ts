@@ -163,6 +163,12 @@ assert(light(powerEx, /^KB /, 35).length === 0, 'power: kettlebell lifts at leas
 const presses = /Press|Thruster|Squat|Row|Snatch/;
 assert(blockEx.some((e: any) => /^DB /.test(e.name)) && light(blockEx, presses, 15).length === 0, 'blocks: no presses, squats or rows under 15 lb ' + light(blockEx, presses, 15).join());
 assert(blockEx.filter((e: any) => /Halo/.test(e.name)).every((e: any) => e.weight <= 20), 'blocks: core moves keep a light weight');
+// No weight above what the user owns: the heaviest on the HOME list is a 50 lb
+// kettlebell / sandbag, and floors, peak-week steps and anchors never go past it.
+const heaviest = Math.max(...g.db, ...g.kb, ...g.sandbag);
+const capPlans = [...plans, ...[40, 65].flatMap(age => [20, 60].map(m => generatePlan({ ...base, age, sessionMinutes: m, programLengthWeeks: 8 }, 3)))];
+const over = [...new Set(capPlans.flatMap(pl => allEx(pl)).filter((e: any) => e.weight > heaviest).map((e: any) => `${e.name} @ ${e.weight}`))];
+assert(heaviest === 50 && over.length === 0, `no weight above the heaviest owned (${heaviest} lb) ` + over.join());
 const olderBlocks = loadedIn(generatePlan({ ...base, age: 65, workoutTypes: ['crossfit'] }, 1), isBlock);
 assert(olderBlocks.some((e: any) => /Thruster|Shoulder Press/.test(e.name) && e.weight <= 10), '60+ keeps the lighter block weights');
 
